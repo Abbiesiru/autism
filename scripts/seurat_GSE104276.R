@@ -7,6 +7,7 @@ library(readxl)
 library(Matrix)
 library(ggplot2)
 
+## example <- readRDS("GSE104276.CPM_example.rds") # saved seurat object
 
 #### 1. Setup the Seurat Object ####
 
