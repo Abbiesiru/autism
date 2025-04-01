@@ -1,4 +1,4 @@
-setwd("/Users/abbiesiru/Desktop/research/seurat/tutorial/")
+setwd("C:/Abbie/research/seurat/tutorial/")
 
 library(dplyr)
 library(Seurat)
