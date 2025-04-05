@@ -8,7 +8,7 @@ library(ggplot2)
 
 #### 1. Setup the Seurat Object ####
 
-raw <- read.table("GSE76381_ESMoleculeCounts.cef.txt", fill = TRUE) 
+raw <- read.table("GSE76381_EmbryoMoleculeCounts.cef.txt", fill = TRUE) 
 
 ### 1a. Create metadata ###
 
@@ -34,11 +34,11 @@ rownames(matrix) <- rownames(tmp1)
 seurat_obj <- CreateSeuratObject(
   counts = as(matrix, "dgCMatrix"),
   meta.data = metadata,
-  project = "human_ES"
+  project = "human_embryo"
 )
 # An object of class Seurat 
-# 18539 features across 1715 samples within 1 assay 
-# Active assay: RNA (18539 features, 0 variable features)
+# 19531 features across 1977 samples within 1 assay 
+# Active assay: RNA (19531 features, 0 variable features)
 # 1 layer present: counts
 
 #### 2. Standard pre-processing workflow ####
@@ -93,16 +93,16 @@ seurat_obj <- RunPCA(seurat_obj, features = VariableFeatures(object = seurat_obj
 # Examine and visualize PCA results a few different ways
 print(seurat_obj[["pca"]], dims = 1:5, nfeatures = 5)
 VizDimLoadings(seurat_obj, dims = 1:2, reduction = "pca")
-ggsave(filename = "output/scale_and_PCA/human_ES_VizDimLoadings.jpg", height = 7, width = 12, quality = 50)
+ggsave(filename = "output/scale_and_PCA/human_embryo_VizDimLoadings.jpg", height = 7, width = 12, quality = 50)
 DimPlot(seurat_obj, reduction = "pca") + NoLegend()
-ggsave(filename = "output/scale_and_PCA/human_ES_DimPlot_PCA.jpg", height = 7, width = 12, quality = 50)
+ggsave(filename = "output/scale_and_PCA/human_embryo_DimPlot_PCA.jpg", height = 7, width = 12, quality = 50)
 DimHeatmap(seurat_obj, dims = 1:15, cells = 500, balanced = TRUE)
 
 
 #### 7. Determine the ‘dimensionality’ of the dataset ####
 
 ElbowPlot(seurat_obj)
-ggsave(filename = "output/scale_and_PCA/human_ES_ElbowPlot.jpg", height = 7, width = 12, quality = 50)
+ggsave(filename = "output/scale_and_PCA/human_embryo_ElbowPlot.jpg", height = 7, width = 12, quality = 50)
 
 #### 8. Cluster the cells ####
 
@@ -117,8 +117,8 @@ head(Idents(seurat_obj), 5)
 
 seurat_obj <- RunUMAP(seurat_obj, dims = 1:10)
 DimPlot(seurat_obj, reduction = "umap")
-ggsave(filename = "output/clustering/human_ES_DimPlot_UMAP.jpg", height = 7, width = 12, quality = 50)
-saveRDS(seurat_obj, file = "output/saved_seurat_obj/human_ES_seurat_obj")
+ggsave(filename = "output/clustering/human_embryo_DimPlot_UMAP.jpg", height = 7, width = 12, quality = 50)
+saveRDS(seurat_obj, file = "output/saved_seurat_obj/human_embryo_seurat_obj")
 
 
 #### 10. Finding differentially expressed features (cluster biomarkers) ####
@@ -129,21 +129,21 @@ obj.markers <- FindAllMarkers(seurat_obj, only.pos = TRUE)
 obj.markers %>%
   group_by(cluster) %>%
   dplyr::filter(avg_log2FC > 1)
-# A tibble: 9,652 × 7
-# # Groups:   cluster [9]
-# p_val avg_log2FC pct.1 pct.2 p_val_adj cluster gene 
-# <dbl>      <dbl> <dbl> <dbl>     <dbl> <fct>   <chr>
-#   1 2.18e-145       3.26 0.802 0.137 4.04e-141 0       NFIA 
-# 2 5.76e- 88       1.39 0.571 0.098 1.07e- 83 0       TTR  
-# 3 2.64e- 87       2.86 0.559 0.094 4.89e- 83 0       HTR2C
-# 4 4.49e- 83       3.01 0.58  0.124 8.32e- 79 0       EPHA3
-# 5 1.57e- 79       3.17 0.485 0.077 2.91e- 75 0       ZIC4 
-# 6 1.75e- 71       1.96 0.846 0.436 3.24e- 67 0       SLIT2
-# 7 3.32e- 70       3.14 0.414 0.056 6.15e- 66 0       LRP1B
-# 8 4.35e- 70       1.77 0.923 0.8   8.06e- 66 0       SPARC
-# 9 5.39e- 70       2.07 0.846 0.482 9.99e- 66 0       WLS  
-# 10 1.76e- 68       2.09 0.861 0.517 3.25e- 64 0       FOS  
-# # ℹ 9,642 more rows
+# # A tibble: 13,287 × 7
+# # Groups:   cluster [12]
+# p_val avg_log2FC pct.1 pct.2 p_val_adj cluster gene     
+# <dbl>      <dbl> <dbl> <dbl>     <dbl> <fct>   <chr>    
+#   1 1.19e-149       3.07 0.906 0.346 2.32e-145 0       CELF4    
+# 2 1.08e-136       2.57 0.898 0.339 2.10e-132 0       MAPT-loc1
+# 3 4.88e-135       2.89 0.822 0.248 9.54e-131 0       HMP19    
+# 4 4.44e-122       2.27 0.914 0.421 8.67e-118 0       RTN1     
+# 5 4.44e-116       2.12 0.984 0.694 8.67e-112 0       MEG3     
+# 6 2.56e-109       2.19 0.836 0.287 5.00e-105 0       INA      
+# 7 2.21e-108       2.95 0.674 0.166 4.32e-104 0       MYT1L    
+# 8 1.39e- 97       1.55 0.982 0.482 2.72e- 93 0       STMN2    
+# 9 1.39e- 95       1.87 0.903 0.533 2.72e- 91 0       DPYSL3   
+# 10 4.52e- 94       1.75 0.935 0.661 8.82e- 90 0       NCAM1    
+# # ℹ 13,277 more rows
 # # ℹ Use `print(n = ...)` to see more rows
 
 obj.markers %>%
