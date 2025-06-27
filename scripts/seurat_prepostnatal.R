@@ -55,10 +55,10 @@ centroids <- umap_df %>%
   group_by(Lineage) %>%
   summarize(x = mean(x), y = mean(y), .groups = "drop")
 
-plots <- lapply(unique(seurat_obj$Age_Range), function(age) {
+plots <- lapply(age_levels, function(age) {
   subset_obj <- subset(seurat_obj, subset = Age_Range == age)
   
-  FeaturePlot(subset_obj, reduction = "umap", features = "SORCS1") +
+  FeaturePlot(subset_obj, reduction = "umap", features = "SORCS3") +
     geom_text(
       data = centroids,
       aes(x = x, y = y, label = Lineage),
@@ -68,7 +68,7 @@ plots <- lapply(unique(seurat_obj$Age_Range), function(age) {
     ggtitle(paste("Age Range:", age))
 })
 
-wrap_plots(plots, ncol = 2)
+wrap_plots(plots, ncol = 4)
 
 
 ### Dot Plot ###
@@ -76,9 +76,10 @@ wrap_plots(plots, ncol = 2)
 DotPlot(
   object = seurat_obj, 
   features = genes_list, 
-  group.by = 'Age_Range', 
+  group.by = 'Region_Broad', 
   cols = c("red", "orange", "yellow", "green", "blue", "purple", "pink", "grey", "brown")
   )
+# FC-frontal/prefrontal cortex, CC-cingulate cortex, TC-temporal cortex, IC-insular cortex, MC-motor cortex, CTX-cortex
 
 ### Scatter Plot ###
 
@@ -138,7 +139,7 @@ ggplot(summary_opc, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
 
 ## OUT cells only ##
 
-out_cells <- WhichCells(seurat_obj, expression = Lineage == "OUT") # 
+out_cells <- WhichCells(seurat_obj, expression = Lineage == "OUT") # none of the other lineages
 seurat_out <- subset(seurat_obj, cells = out_cells)
 
 # Fetch expression and metadata for OUT cells only
@@ -168,7 +169,7 @@ ggplot(summary_out, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
 
 ## ExNeu cells only ##
 
-exneu_cells <- WhichCells(seurat_obj, expression = Lineage == "ExNeu")
+exneu_cells <- WhichCells(seurat_obj, expression = Lineage == "ExNeu") # excitatory neuron
 seurat_exneu <- subset(seurat_obj, cells = exneu_cells)
 
 # Fetch expression and metadata for ExNeu cells only
@@ -227,7 +228,7 @@ ggplot(summary_ast, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
 
 ## OL cells only ##
 
-ol_cells <- WhichCells(seurat_obj, expression = Lineage == "OL")
+ol_cells <- WhichCells(seurat_obj, expression = Lineage == "OL") # oligodendrocyte
 seurat_ol <- subset(seurat_obj, cells = ol_cells)
 
 # Fetch expression and metadata for OL cells only
@@ -256,7 +257,7 @@ ggplot(summary_ol, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
 
 ## IN cells only ##
 
-in_cells <- WhichCells(seurat_obj, expression = Lineage == "IN")
+in_cells <- WhichCells(seurat_obj, expression = Lineage == "IN") # interneuron/inhibitory neuron
 seurat_in <- subset(seurat_obj, cells = in_cells)
 
 # Fetch expression and metadata for IN cells only
@@ -285,10 +286,10 @@ ggplot(summary_in, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
 
 ## GLIALPROG cells only ##
 
-glialprog_cells <- WhichCells(seurat_obj, expression = Lineage == "GLIALPROG")
+glialprog_cells <- WhichCells(seurat_obj, expression = Lineage == "GLIALPROG") # glial progenitor
 seurat_glialprog <- subset(seurat_obj, cells = glialprog_cells)
 
-# Fetch expression and metadata for AST cells only
+# Fetch expression and metadata for GLIALPROG cells only
 exprs_data_glialprog <- FetchData(seurat_glialprog, vars = c(gene, "Age_Range"))
 
 # Summarize
@@ -312,4 +313,55 @@ ggplot(summary_glialprog, aes(x = Age_Range, y = avg_exprs, size = percent_exprs
   ) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+
+### dataset statistics ###
+
+
+## cell counts per donor ##
+donor_counts <- as.data.frame(table(seurat_obj$Individual))
+colnames(donor_counts) <- c("Individual", "Cell_Count")
+
+ggplot(donor_counts, aes(x = Individual, y = Cell_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Individual", y = "Number of Cells", title = "Cell Counts per Donor") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+## cell counts per age range ##
+age_counts <- as.data.frame(table(seurat_obj$Age_Range))
+colnames(age_counts) <- c("Age_Range", "Cell_Count")
+
+ggplot(age_counts, aes(x = Age_Range, y = Cell_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Age Range", y = "Number of Cells", title = "Cell Counts per Age Range") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+## cell counts per broad region ##
+region_counts <- as.data.frame(table(seurat_obj$Region_Broad))
+colnames(region_counts) <- c("Region_Broad", "Cell_Count")
+
+ggplot(region_counts, aes(x = Region_Broad, y = Cell_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Broad Region", y = "Number of Cells", title = "Cell Counts per Broad Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+## cell types in each region ##
+
+region_celltype_counts <- seurat_obj@meta.data %>%
+  group_by(Region_Broad, Lineage) %>%
+  summarise(Count = n(), .groups = "drop")
+
+region_celltype_percent <- region_celltype_counts %>%
+  group_by(Region_Broad) %>%
+  mutate(Percent = Count / sum(Count) * 100)
+
+ggplot(region_celltype_percent, aes(x = Region_Broad, y = Percent, fill = Lineage)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Region", y = "Cell Type Composition (%)", fill = "Cell Type",
+       title = "Cell Type Composition per Brain Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
