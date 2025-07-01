@@ -1,11 +1,17 @@
-setwd("C:/Abbie/research/seurat/prepostnatal")
-
 library(dplyr)
+library(tidyr)
 library(Seurat)
 library(patchwork)
 library(ggplot2)
 library(Matrix)
 library(data.table)
+library(writexl)
+library(ComplexHeatmap)
+library(circlize)
+
+setwd("C:/Abbie/research/seurat")
+autism_risk_genes_new <- read.csv("autism_risk_genes_combined.csv", sep = ",", header = FALSE, col.names = c("Gene", "BF_Type", "Status"), skip = 101)
+setwd("C:/Abbie/research/seurat/prepostnatal")
 
 
 #### 1. Setup the Seurat Object ####
@@ -48,20 +54,27 @@ seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
 umap_df <- data.frame(
   x = seurat_obj@reductions$umap@cell.embeddings[, 1],
   y = seurat_obj@reductions$umap@cell.embeddings[, 2],
+  Region = seurat_obj$Region_Broad,
   Lineage = seurat_obj$Lineage
 )
 
-centroids <- umap_df %>%
+## cell type centroid ##
+centroids_lineage <- umap_df %>%
   group_by(Lineage) %>%
+  summarize(x = mean(x), y = mean(y), .groups = "drop")
+
+## region centroid ##
+centroids_region <- umap_df %>%
+  group_by(Region) %>%
   summarize(x = mean(x), y = mean(y), .groups = "drop")
 
 plots <- lapply(age_levels, function(age) {
   subset_obj <- subset(seurat_obj, subset = Age_Range == age)
   
-  FeaturePlot(subset_obj, reduction = "umap", features = "SORCS3") +
+  FeaturePlot(subset_obj, reduction = "umap", features = "SORCS2") +
     geom_text(
-      data = centroids,
-      aes(x = x, y = y, label = Lineage),
+      data = centroids_region,
+      aes(x = x, y = y, label = Region),
       size = 3,
       color = "black"
     ) +
@@ -69,6 +82,14 @@ plots <- lapply(age_levels, function(age) {
 })
 
 wrap_plots(plots, ncol = 4)
+
+FeaturePlot(seurat_obj, reduction = "umap", features = "SORCS2") +
+  geom_text(
+    data = centroids_region,
+    aes(x = x, y = y, label = Region),
+    size = 3,
+    color = "black"
+  )
 
 
 ### Dot Plot ###
@@ -83,7 +104,7 @@ DotPlot(
 
 ### Scatter Plot ###
 
-gene <- "SORCS2"
+gene <- "SORCS3"
 
 exprs_data <- FetchData(seurat_obj, vars = c(gene, "Age_Range"))
 
@@ -106,6 +127,21 @@ ggplot(summary_df, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
     size = "% Cells Expressed"
   ) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(data=summary_df, aes(x=Age_Range, y=avg_exprs, group=1)) +
+  geom_line()+
+  geom_point() + 
+  scale_y_continuous(
+    breaks = seq(0.1, 1.0, by = 0.1), 
+    limits = c(0.0, 1.0)           
+  ) +
+  labs (
+    title = paste("Expression of", gene, "by Age Range"),
+    subtitle = "All Cells",
+    x = "Age Range",
+    y = "Average Expression", 
+    
+  )
 
 ## OPC cells only ##
 
@@ -364,4 +400,115 @@ ggplot(region_celltype_percent, aes(x = Region_Broad, y = Percent, fill = Lineag
        title = "Cell Type Composition per Brain Region") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#### 3. Analysis of all 100 New Autism Risk Genes ####
+
+exprs_data_all <- GetAssayData(seurat_obj, assay = "RNA", slot = "data")
+exprs_data_asd <- exprs_data_all[autism_risk_genes_new$Gene[autism_risk_genes_new$Gene %in% rownames(exprs_data_all)], ]
+
+# Combine with metadata
+meta <- seurat_obj@meta.data
+meta$cell <- rownames(meta)
+
+### average expression per gene by region & lineage ###
+
+# Make df: gene | cell | expression | region
+df_region <- exprs_data_asd %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("gene") %>%
+  pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+  left_join(meta[, c("cell", "Region_Broad")], by = "cell")
+
+# Compute average expression per gene per region
+avg_exprs_region <- df_region %>%
+  group_by(gene, Region_Broad) %>%
+  summarise(avg_exprs = mean(expression), .groups = "drop") %>%
+  pivot_wider(names_from = Region_Broad, values_from = avg_exprs)
+
+# Make df: gene | cell | expression | cell type
+df_lineage <- exprs_data_asd %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("gene") %>%
+  pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+  left_join(meta[, c("cell", "Lineage")], by = "cell")
+
+# Compute average expression per gene per cell type
+avg_exprs_lineage <- df_lineage %>%
+  group_by(gene, Lineage) %>%
+  summarise(avg_exprs = mean(expression), .groups = "drop") %>%
+  pivot_wider(names_from = Lineage, values_from = avg_exprs)
+
+# write_xlsx(avg_exprs_region, "avg_exprs_region.xlsx")
+# write_xlsx(avg_exprs_lineage, "avg_exprs_lineage.xlsx")
+
+### heatmaps and clustering by lineage ###
+
+exprs_mat_lineage <- as.matrix(avg_exprs_lineage[ , -1])         
+rownames(exprs_mat_lineage) <- avg_exprs_lineage$gene
+
+# assign colors
+exprs_colors <- colorRamp2(
+  c(min(exprs_mat_lineage), median(exprs_mat_lineage), max(exprs_mat_lineage)),
+  c("blue", "white", "red")
+)
+
+# column annotations
+lineage_anno <- HeatmapAnnotation(
+  Lineage = colnames(exprs_mat_lineage),
+  col = list(Lineage = structure(
+    rainbow(length(unique(colnames(exprs_mat_lineage)))),
+    names = colnames(exprs_mat_lineage)
+  ))
+)
+
+Heatmap(
+  exprs_mat_lineage,
+  name = "Average Expression Across Cell Types",
+  column_title = "Cell Type",
+  row_title = "Gene",
+  top_annotation = lineage_anno,
+  cluster_rows = TRUE,
+  cluster_columns = FALSE,  
+  show_row_names = TRUE,
+  show_column_names = TRUE,
+  row_names_gp = gpar(fontsize = 6),
+  column_names_gp = gpar(fontsize = 8),
+  col = exprs_colors
+)
+
+
+### heatmaps and clustering by region ###
+
+exprs_mat_region <- as.matrix(avg_exprs_region[ , -1])         
+rownames(exprs_mat_region) <- avg_exprs_region$gene
+
+# assign colors
+exprs_colors <- colorRamp2(
+  c(min(exprs_mat_region), median(exprs_mat_region), max(exprs_mat_region)),
+  c("blue", "white", "red")
+)
+
+# column annotations
+region_anno <- HeatmapAnnotation(
+  Region = colnames(exprs_mat_region),
+  col = list(Region = structure(
+    rainbow(length(unique(colnames(exprs_mat_region)))),
+    names = colnames(exprs_mat_region)
+  ))
+)
+
+Heatmap(
+  t(exprs_mat_lineage),
+  name = "Avg. Expr.",
+  column_title = "ASD Risk Genes",
+  row_title = "Cell Type",
+  cluster_rows = TRUE,
+  cluster_columns = TRUE,  
+  show_row_names = TRUE,
+  show_column_names = TRUE,
+  row_names_gp = gpar(fontsize = 16),
+  column_names_gp = gpar(fontsize = 6),
+  col = exprs_colors
+)
 
