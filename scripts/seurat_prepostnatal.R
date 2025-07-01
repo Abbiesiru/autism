@@ -1,4 +1,8 @@
-setwd("C:/Abbie/research/seurat/prepostnatal")
+base_dir <- switch(Sys.info()[["nodename"]],
+                   "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat/prepostnatal",
+                   "gauss" = "/home/abbiew/single_cell/velmeshev",
+                   "."
+)
 
 library(dplyr)
 library(Seurat)
@@ -7,6 +11,8 @@ library(ggplot2)
 library(Matrix)
 library(data.table)
 
+seurat_obj_path <- file.path(base_dir, "seurat_obj.rds")
+seurat_obj <- readRDS(seurat_obj_path)
 
 #### 1. Setup the Seurat Object ####
 
@@ -31,44 +37,67 @@ library(data.table)
 # 
 # saveRDS(seurat_obj, "seurat_obj.rds")
 
-seurat_obj <- readRDS("seurat_obj.rds")
-
-# DimPlot(seurat_obj, reduction = "umap", group.by = "Lineage")
-
-
 #### 2. Identify & Visualize spaciotemporal expression pattern of genes ####
 
-genes_list <- c("SORCS1", "SORCS2", "SORCS3")
+genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
 
+# sort age ranges from earliest to latest
 age_levels <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", "4-10 years", "10-20 years", "Adult")
 seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
 
 ### Feature Plot ###
 
-umap_df <- data.frame(
-  x = seurat_obj@reductions$umap@cell.embeddings[, 1],
-  y = seurat_obj@reductions$umap@cell.embeddings[, 2],
-  Lineage = seurat_obj$Lineage
-)
-
-centroids <- umap_df %>%
-  group_by(Lineage) %>%
-  summarize(x = mean(x), y = mean(y), .groups = "drop")
-
-plots <- lapply(age_levels, function(age) {
-  subset_obj <- subset(seurat_obj, subset = Age_Range == age)
+generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE) {
+  # Calculate centroids
+  umap_df <- data.frame(
+    x = seurat_obj@reductions$umap@cell.embeddings[, 1],
+    y = seurat_obj@reductions$umap@cell.embeddings[, 2],
+    Group = seurat_obj[[group_var]][, 1]
+  )
   
-  FeaturePlot(subset_obj, reduction = "umap", features = "SORCS3") +
-    geom_text(
-      data = centroids,
-      aes(x = x, y = y, label = Lineage),
-      size = 3,
-      color = "black"
-    ) +
-    ggtitle(paste("Age Range:", age))
-})
+  centroids <- umap_df %>%
+    group_by(Group) %>%
+    summarize(x = mean(x), y = mean(y), .groups = "drop")
+  
+  # If splitting by age
+  if (split_by_age) {
+    age_levels <- levels(seurat_obj$Age_Range)
+    
+    plots <- lapply(age_levels, function(age) {
+      subset_obj <- subset(seurat_obj, subset = Age_Range == age)
+      
+      FeaturePlot(subset_obj, reduction = "umap", features = gene) +
+        geom_text(
+          data = centroids,
+          aes(x = x, y = y, label = Group),
+          size = 3,
+          color = "black",
+          inherit.aes = FALSE
+        ) +
+        ggtitle(paste("Age Range:", age, "-", group_var, "-", gene))
+    })
+    
+    return(wrap_plots(plots, ncol = 4))
+    
+  } else {
+    # Single UMAP, not split by age
+    FeaturePlot(seurat_obj, reduction = "umap", features = gene) +
+      geom_text(
+        data = centroids,
+        aes(x = x, y = y, label = Group),
+        size = 3,
+        color = "black",
+        inherit.aes = FALSE
+      ) +
+      ggtitle(paste("All Ages -", group_var, "-", gene))
+  }
+}
 
-wrap_plots(plots, ncol = 4)
+# 8 plots, one per age range
+generate_umap_plot(seurat_obj, group_var = "Lineage", gene = "SORCS3", split_by_age = TRUE)
+
+# 1 combined plot
+generate_umap_plot(seurat_obj, group_var = "Region_Broad", gene = "SORCS1", split_by_age = FALSE)
 
 
 ### Dot Plot ###
