@@ -1,95 +1,108 @@
+base_dir <- switch(Sys.info()[["nodename"]],
+                   "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat/prepostnatal",
+                   "gauss" = "/home/abbiew/single_cell/velmeshev",
+                   "."
+)
+
 library(dplyr)
-library(tidyr)
 library(Seurat)
 library(patchwork)
-library(ggplot2)
 library(Matrix)
-library(data.table)
-library(writexl)
-library(ComplexHeatmap)
-library(circlize)
 
-setwd("C:/Abbie/research/seurat")
-autism_risk_genes_new <- read.csv("autism_risk_genes_combined.csv", sep = ",", header = FALSE, col.names = c("Gene", "BF_Type", "Status"), skip = 101)
-setwd("C:/Abbie/research/seurat/prepostnatal")
+meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
+
+mat <- readMM("matrix.mtx.gz")
+barcodes <- read.delim("barcodes.tsv.gz", header = FALSE)
+features <- read.delim("features.tsv.gz", header = FALSE, stringsAsFactors = FALSE)
+rownames(mat) <- make.unique(features$V1) # gene names
+colnames(mat) <- barcodes$V1 # cell barcodes
+
+seurat_obj <- CreateSeuratObject(counts = mat, project = "prepostnatal", meta.data=meta)
+
+umap <- read.delim("UMAP.coords.tsv.gz", header = FALSE, stringsAsFactors = FALSE)
+colnames(umap) <- c("barcode", "UMAP_1", "UMAP_2")
+rownames(umap) <- umap$barcode
+umap$barcode <- NULL
+seurat_obj[["umap"]] <- CreateDimReducObject(embeddings = as.matrix(umap), key = "UMAP_", assay = "RNA")
+
+seurat_obj <- NormalizeData(seurat_obj)
+
+saveRDS(seurat_obj, "seurat_obj.rds")
+
+### subset seurat_obj ###
+
+genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
+ASD_risk_genes <- read.csv("autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+
+seurat_obj_path <- file.path(base_dir, "seurat_obj.rds")
+seurat_obj <- readRDS(seurat_obj_path)
+
+seurat_obj_subset <- seurat_obj[ASD_risk_genes$Gene, ]
+
+# sort age ranges from earliest to latest
+age_levels <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", "4-10 years", "10-20 years", "Adult")
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
+
+saveRDS(seurat_obj_subset, "seurat_obj_subset.rds")
 
 
-#### 1. Setup the Seurat Object ####
-
-# meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
-# 
-# mat <- readMM("matrix.mtx.gz")
-# barcodes <- read.delim("barcodes.tsv.gz", header = FALSE)
-# features <- read.delim("features.tsv.gz", header = FALSE, stringsAsFactors = FALSE)
-# rownames(mat) <- make.unique(features$V1) # gene names
-# colnames(mat) <- barcodes$V1 # cell barcodes
-# 
-# seurat_obj <- CreateSeuratObject(counts = mat, project = "prepostnatal", meta.data=meta)
-# 
-# umap <- read.delim("UMAP.coords.tsv.gz", header = FALSE, stringsAsFactors = FALSE)
-# colnames(umap) <- c("barcode", "UMAP_1", "UMAP_2")
-# rownames(umap) <- umap$barcode
-# umap$barcode <- NULL
-# seurat_obj[["umap"]] <- CreateDimReducObject(embeddings = as.matrix(umap), key = "UMAP_", assay = "RNA")
-# 
-# 
-# seurat_obj <- NormalizeData(seurat_obj)
-# 
-# saveRDS(seurat_obj, "seurat_obj.rds")
-
-seurat_obj <- readRDS("seurat_obj.rds")
-
-# DimPlot(seurat_obj, reduction = "umap", group.by = "Lineage")
 
 
 #### 2. Identify & Visualize spaciotemporal expression pattern of genes ####
 
-genes_list <- c("SORCS1", "SORCS2", "SORCS3")
-
-age_levels <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", "4-10 years", "10-20 years", "Adult")
-seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
-
 ### Feature Plot ###
 
-umap_df <- data.frame(
-  x = seurat_obj@reductions$umap@cell.embeddings[, 1],
-  y = seurat_obj@reductions$umap@cell.embeddings[, 2],
-  Region = seurat_obj$Region_Broad,
-  Lineage = seurat_obj$Lineage
-)
-
-## cell type centroid ##
-centroids_lineage <- umap_df %>%
-  group_by(Lineage) %>%
-  summarize(x = mean(x), y = mean(y), .groups = "drop")
-
-## region centroid ##
-centroids_region <- umap_df %>%
-  group_by(Region) %>%
-  summarize(x = mean(x), y = mean(y), .groups = "drop")
-
-plots <- lapply(age_levels, function(age) {
-  subset_obj <- subset(seurat_obj, subset = Age_Range == age)
-  
-  FeaturePlot(subset_obj, reduction = "umap", features = "SORCS2") +
-    geom_text(
-      data = centroids_region,
-      aes(x = x, y = y, label = Region),
-      size = 3,
-      color = "black"
-    ) +
-    ggtitle(paste("Age Range:", age))
-})
-
-wrap_plots(plots, ncol = 4)
-
-FeaturePlot(seurat_obj, reduction = "umap", features = "SORCS2") +
-  geom_text(
-    data = centroids_region,
-    aes(x = x, y = y, label = Region),
-    size = 3,
-    color = "black"
+generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE) {
+  # Calculate centroids
+  umap_df <- data.frame(
+    x = seurat_obj@reductions$umap@cell.embeddings[, 1],
+    y = seurat_obj@reductions$umap@cell.embeddings[, 2],
+    Group = seurat_obj[[group_var]][, 1]
   )
+  
+  centroids <- umap_df %>%
+    group_by(Group) %>%
+    summarize(x = mean(x), y = mean(y), .groups = "drop")
+  
+  # If splitting by age
+  if (split_by_age) {
+    age_levels <- levels(seurat_obj$Age_Range)
+    
+    plots <- lapply(age_levels, function(age) {
+      subset_obj <- subset(seurat_obj, subset = Age_Range == age)
+      
+      FeaturePlot(subset_obj, reduction = "umap", features = gene) +
+        geom_text(
+          data = centroids,
+          aes(x = x, y = y, label = Group),
+          size = 3,
+          color = "black",
+          inherit.aes = FALSE
+        ) +
+        ggtitle(paste("Age Range:", age, "-", group_var, "-", gene))
+    })
+    
+    return(wrap_plots(plots, ncol = 4))
+    
+  } else {
+    # Single UMAP, not split by age
+    FeaturePlot(seurat_obj, reduction = "umap", features = gene) +
+      geom_text(
+        data = centroids,
+        aes(x = x, y = y, label = Group),
+        size = 3,
+        color = "black",
+        inherit.aes = FALSE
+      ) +
+      ggtitle(paste("All Ages -", group_var, "-", gene))
+  }
+}
+
+# 8 plots, one per age range
+generate_umap_plot(seurat_obj, group_var = "Lineage", gene = "SORCS3", split_by_age = TRUE)
+
+# 1 combined plot
+generate_umap_plot(seurat_obj, group_var = "Region_Broad", gene = "SORCS1", split_by_age = FALSE)
 
 
 ### Dot Plot ###
@@ -99,12 +112,12 @@ DotPlot(
   features = genes_list, 
   group.by = 'Region_Broad', 
   cols = c("red", "orange", "yellow", "green", "blue", "purple", "pink", "grey", "brown")
-  )
+)
 # FC-frontal/prefrontal cortex, CC-cingulate cortex, TC-temporal cortex, IC-insular cortex, MC-motor cortex, CTX-cortex
 
 ### Scatter Plot ###
 
-gene <- "SORCS3"
+gene <- "SORCS2"
 
 exprs_data <- FetchData(seurat_obj, vars = c(gene, "Age_Range"))
 
@@ -127,21 +140,6 @@ ggplot(summary_df, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
     size = "% Cells Expressed"
   ) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggplot(data=summary_df, aes(x=Age_Range, y=avg_exprs, group=1)) +
-  geom_line()+
-  geom_point() + 
-  scale_y_continuous(
-    breaks = seq(0.1, 1.0, by = 0.1), 
-    limits = c(0.0, 1.0)           
-  ) +
-  labs (
-    title = paste("Expression of", gene, "by Age Range"),
-    subtitle = "All Cells",
-    x = "Age Range",
-    y = "Average Expression", 
-    
-  )
 
 ## OPC cells only ##
 
@@ -499,10 +497,10 @@ region_anno <- HeatmapAnnotation(
 )
 
 Heatmap(
-  t(exprs_mat_lineage),
+  t(exprs_mat_region),
   name = "Avg. Expr.",
   column_title = "ASD Risk Genes",
-  row_title = "Cell Type",
+  row_title = "Cell_Type",
   cluster_rows = TRUE,
   cluster_columns = TRUE,  
   show_row_names = TRUE,
@@ -511,4 +509,6 @@ Heatmap(
   column_names_gp = gpar(fontsize = 6),
   col = exprs_colors
 )
+
+
 
