@@ -4,54 +4,33 @@ base_dir <- switch(Sys.info()[["nodename"]],
                    "."
 )
 
+output_folder <- "plots"
+output_dir <- file.path(base_dir, output_folder)
+
+# Create folder if it doesn't exist
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
 library(dplyr)
+library(tidyr)
 library(Seurat)
 library(patchwork)
 library(Matrix)
+library(ggplot2)
+library(data.table)
+library(writexl)
+library(ComplexHeatmap)
+library(circlize)
+library(tibble)
+library(grid)
 
-meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
-
-mat <- readMM("matrix.mtx.gz")
-barcodes <- read.delim("barcodes.tsv.gz", header = FALSE)
-features <- read.delim("features.tsv.gz", header = FALSE, stringsAsFactors = FALSE)
-rownames(mat) <- make.unique(features$V1) # gene names
-colnames(mat) <- barcodes$V1 # cell barcodes
-
-seurat_obj <- CreateSeuratObject(counts = mat, project = "prepostnatal", meta.data=meta)
-
-umap <- read.delim("UMAP.coords.tsv.gz", header = FALSE, stringsAsFactors = FALSE)
-colnames(umap) <- c("barcode", "UMAP_1", "UMAP_2")
-rownames(umap) <- umap$barcode
-umap$barcode <- NULL
-seurat_obj[["umap"]] <- CreateDimReducObject(embeddings = as.matrix(umap), key = "UMAP_", assay = "RNA")
-
-seurat_obj <- NormalizeData(seurat_obj)
-
-saveRDS(seurat_obj, "seurat_obj.rds")
-
-### subset seurat_obj ###
-
+seurat_obj <- readRDS("seurat_obj_subset.rds")
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
-ASD_risk_genes <- read.csv("autism_risk_genes_combined.csv", sep = ",", header = TRUE)
 
-seurat_obj_path <- file.path(base_dir, "seurat_obj.rds")
-seurat_obj <- readRDS(seurat_obj_path)
+#### 1. Feature Plot ####
 
-seurat_obj_subset <- seurat_obj[ASD_risk_genes$Gene, ]
-
-# sort age ranges from earliest to latest
-age_levels <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", "4-10 years", "10-20 years", "Adult")
-seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
-
-saveRDS(seurat_obj_subset, "seurat_obj_subset.rds")
-
-
-
-
-#### 2. Identify & Visualize spaciotemporal expression pattern of genes ####
-
-### Feature Plot ###
-
+### 1a. create feature plot with annotations ###
 generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE) {
   # Calculate centroids
   umap_df <- data.frame(
@@ -66,7 +45,7 @@ generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE)
   
   # If splitting by age
   if (split_by_age) {
-    age_levels <- levels(seurat_obj$Age_Range)
+    age_levels <- unique(seurat_obj$Age_Range)
     
     plots <- lapply(age_levels, function(age) {
       subset_obj <- subset(seurat_obj, subset = Age_Range == age)
@@ -79,10 +58,11 @@ generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE)
           color = "black",
           inherit.aes = FALSE
         ) +
-        ggtitle(paste("Age Range:", age, "-", group_var, "-", gene))
+        ggtitle(as.character(age))
     })
     
-    return(wrap_plots(plots, ncol = 4))
+    return(wrap_plots(plots, ncol = 4) + 
+             patchwork::plot_annotation(title = paste(group_var, "-", gene)))  
     
   } else {
     # Single UMAP, not split by age
@@ -98,292 +78,258 @@ generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE)
   }
 }
 
-# 8 plots, one per age range
-generate_umap_plot(seurat_obj, group_var = "Lineage", gene = "SORCS3", split_by_age = TRUE)
-
-# 1 combined plot
-generate_umap_plot(seurat_obj, group_var = "Region_Broad", gene = "SORCS1", split_by_age = FALSE)
-
-
-### Dot Plot ###
-
-DotPlot(
-  object = seurat_obj, 
-  features = genes_list, 
-  group.by = 'Region_Broad', 
-  cols = c("red", "orange", "yellow", "green", "blue", "purple", "pink", "grey", "brown")
-)
-# FC-frontal/prefrontal cortex, CC-cingulate cortex, TC-temporal cortex, IC-insular cortex, MC-motor cortex, CTX-cortex
-
-### Scatter Plot ###
-
-gene <- "SORCS2"
-
-exprs_data <- FetchData(seurat_obj, vars = c(gene, "Age_Range"))
-
-summary_df <- exprs_data %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]]),
-    percent_exprs = sum(.data[[gene]] > 0) / n() * 100
-  )
+### 1b. generate and save plot only if not already saved ###
+generate_and_save_if_new <- function(seurat_obj, group_var, gene, split_by_age, folder, filename, width = 16, height = 12) {
+  # Construct full file path
+  filepath <- file.path(folder, filename)
+  
+  # Create output folder if needed
+  if (!dir.exists(folder)) {
+    dir.create(folder, recursive = TRUE)
+  }
+  
+  # Check existence
+  if (!file.exists(filepath)) {
+    message("Generating and saving: ", filepath)
+    p <- generate_umap_plot(seurat_obj, group_var = group_var, gene = gene, split_by_age = split_by_age)
+    ggsave(filepath, plot = p, width = width, height = height, units = "in")
+  } else {
+    message("Skipped (already exists): ", filepath)
+  }
+}
 
 
-ggplot(summary_df, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "by Age Range"),
-    subtitle = "All Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Cells Expressed"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+### generate 12 plots: 3 genes x 2 annotations, split/unsplit ###
 
-## OPC cells only ##
+group_vars <- c("Lineage", "Region_Broad")
+split_options <- c(TRUE, FALSE)
 
-opc_cells <- WhichCells(seurat_obj, expression = Lineage == "OPC") # oligodendrocyte precursor cells
-seurat_opc <- subset(seurat_obj, cells = opc_cells)
+for (group_var in group_vars) {
+  for (gene in genes_of_interest) {
+    for (split in split_options) {
+      split_label <- if (split) "split" else "all"
+      filename <- paste0("feature_plot_", gene, "_", tolower(group_var), "_", split_label, ".pdf")
+      
+      generate_and_save_if_new(
+        seurat_obj = seurat_obj,
+        group_var = group_var,
+        gene = gene,
+        split_by_age = split,
+        folder = output_dir,
+        filename = filename,
+        width = 16,
+        height = 12
+      )
+    }
+  }
+}
 
-# Fetch expression and metadata for OPCs only
-exprs_data_opc <- FetchData(seurat_opc, vars = c(gene, "Age_Range"))
+#### 2. Dot Plot ####
 
-# Summarize
-summary_opc <- exprs_data_opc %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
-
-# Plot
-ggplot(summary_opc, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "OPC Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
-## OUT cells only ##
-
-out_cells <- WhichCells(seurat_obj, expression = Lineage == "OUT") # none of the other lineages
-seurat_out <- subset(seurat_obj, cells = out_cells)
-
-# Fetch expression and metadata for OUT cells only
-exprs_data_out <- FetchData(seurat_out, vars = c(gene, "Age_Range"))
-
-# Summarize
-summary_out <- exprs_data_out %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
-
-# Plot
-ggplot(summary_out, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "OUT Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+for (group_var in group_vars) {
+  filename <- paste0("dot_plot_", tolower(group_var), ".pdf")
+  filepath <- file.path(output_dir, filename)
+  
+  if (!file.exists(filepath)) {
+    message("Generating and saving: ", filepath)
+    
+    title_text <- paste(
+      paste(genes_of_interest, collapse = ", "),
+      "expression by",
+      tolower(gsub("_", " ", group_var))
+    )
+    
+    p <- DotPlot(
+      object = seurat_obj,
+      features = genes_of_interest,
+      group.by = group_var,
+      cols = c("grey", "blue")
+    ) +
+      ggtitle(title_text) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+    ggsave(filepath, plot = p, width = 10, height = 6, units = "in")
+  } else {
+    message("Skipped (already exists): ", filepath)
+  }
+}
 
 
-## ExNeu cells only ##
+#### 3. Scatter Plot ####
 
-exneu_cells <- WhichCells(seurat_obj, expression = Lineage == "ExNeu") # excitatory neuron
-seurat_exneu <- subset(seurat_obj, cells = exneu_cells)
+lineages <- c("All", "OPC", "ExNeu", "AST", "OL", "IN", "GLIALPROG")
+age_levels <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years",
+                "2-4 years", "4-10 years", "10-20 years", "Adult")
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
 
-# Fetch expression and metadata for ExNeu cells only
-exprs_data_exneu <- FetchData(seurat_exneu, vars = c(gene, "Age_Range"))
+# helper function to get summary data
+get_summary_df <- function(seurat_obj, gene, lineage, age_levels) {
+  if (lineage == "All") {
+    seurat_sub <- seurat_obj
+  } else {
+    cells <- WhichCells(seurat_obj, expression = Lineage == lineage)
+    seurat_sub <- subset(seurat_obj, cells = cells)
+  }
+  
+  exprs_data <- FetchData(seurat_sub, vars = c(gene, "Age_Range"))
+  
+  summary_df <- exprs_data %>%
+    mutate(Age_Range = factor(Age_Range, levels = age_levels)) %>%
+    group_by(Age_Range) %>%
+    summarize(
+      avg_exprs = mean(.data[[gene]], na.rm = TRUE),
+      percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100,
+      .groups = "drop"
+    ) %>%
+    complete(Age_Range = age_levels, fill = list(avg_exprs = 0, percent_exprs = 0)) %>%
+    mutate(Gene = gene, Lineage = lineage)
+  
+  return(summary_df)
+}
 
-# Summarize
-summary_exneu <- exprs_data_exneu %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
+# prepare all summaries
+all_summaries <- list()
+for (gene in genes_of_interest) {
+  for (lineage in lineages) {
+    sum_df <- get_summary_df(seurat_obj, gene, lineage, age_levels)
+    all_summaries[[paste(gene, lineage, sep = "_")]] <- sum_df
+  }
+}
+combined_summary <- bind_rows(all_summaries)
 
-# Plot
-ggplot(summary_exneu, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "ExNeu Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# find top 3 max avg. expressions
+top_expr_rows <- combined_summary %>%
+  arrange(desc(avg_exprs)) %>%
+  slice(1:3)
 
-## AST cells only ##
+excluded_gene <- top_expr_rows$Gene[1]
+excluded_lineage <- top_expr_rows$Lineage[1]
 
-ast_cells <- WhichCells(seurat_obj, expression = Lineage == "AST")
-seurat_ast <- subset(seurat_obj, cells = ast_cells)
+# remove the top max row for consistent y-scale
+target_summary <- combined_summary %>%
+  filter(!(Gene == excluded_gene & Lineage == excluded_lineage))
 
-# Fetch expression and metadata for AST cells only
-exprs_data_ast <- FetchData(seurat_ast, vars = c(gene, "Age_Range"))
+# global axis scales
+y_max <- ceiling(max(target_summary$avg_exprs, na.rm = TRUE) * 10) / 10
+max_percent <- ceiling(max(combined_summary$percent_exprs, na.rm = TRUE))
 
-# Summarize
-summary_ast <- exprs_data_ast %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
+# function to generate & save plot if new
+generate_and_save_age_expr_plot <- function(df, gene, lineage, y_max, max_percent, output_dir) {
+  lineage_clean <- tolower(gsub("[^a-zA-Z0-9]", "", lineage))
+  gene_clean <- gene  # preserve case
+  
+  filename <- paste0("age_expr_", gene_clean, "_", lineage_clean, ".pdf")
+  filepath <- file.path(output_dir, filename)
+  
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  
+  if (!file.exists(filepath)) {
+    message("Generating and saving: ", filepath)
+    
+    subtitle_text <- ifelse(lineage == "All", "All Cells", paste(lineage, "Cells"))
+    
+    df <- df %>% mutate(Age_Range = factor(Age_Range, levels = age_levels))
+    
+    p <- ggplot(df, aes(x = Age_Range, y = avg_exprs, group = 1)) +
+      geom_line(color = "#2c7fb8", linewidth = 1) +
+      geom_point(aes(size = percent_exprs), color = "#2c7fb8") +
+      scale_size_continuous(limits = c(0, max_percent), breaks = scales::pretty_breaks(n = 5)) +
+      theme_minimal() +
+      labs(
+        title = paste("Expression of", gene, "across Age Ranges"),
+        subtitle = subtitle_text,
+        x = "Age Range",
+        y = "Average Expression",
+        size = "% Expressing Cells"
+      ) +
+      ylim(0, y_max) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    ggsave(filepath, plot = p, width = 8, height = 5, units = "in")
+  } else {
+    message("Skipped (already exists): ", filepath)
+  }
+}
 
-# Plot
-ggplot(summary_ast, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "AST Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
-## OL cells only ##
-
-ol_cells <- WhichCells(seurat_obj, expression = Lineage == "OL") # oligodendrocyte
-seurat_ol <- subset(seurat_obj, cells = ol_cells)
-
-# Fetch expression and metadata for OL cells only
-exprs_data_ol <- FetchData(seurat_ol, vars = c(gene, "Age_Range"))
-
-# Summarize
-summary_ol <- exprs_data_ol %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
-
-# Plot
-ggplot(summary_ol, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "OL Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-## IN cells only ##
-
-in_cells <- WhichCells(seurat_obj, expression = Lineage == "IN") # interneuron/inhibitory neuron
-seurat_in <- subset(seurat_obj, cells = in_cells)
-
-# Fetch expression and metadata for IN cells only
-exprs_data_in <- FetchData(seurat_in, vars = c(gene, "Age_Range"))
-
-# Summarize
-summary_in <- exprs_data_in %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
-
-# Plot
-ggplot(summary_in, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "IN Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-## GLIALPROG cells only ##
-
-glialprog_cells <- WhichCells(seurat_obj, expression = Lineage == "GLIALPROG") # glial progenitor
-seurat_glialprog <- subset(seurat_obj, cells = glialprog_cells)
-
-# Fetch expression and metadata for GLIALPROG cells only
-exprs_data_glialprog <- FetchData(seurat_glialprog, vars = c(gene, "Age_Range"))
-
-# Summarize
-summary_glialprog <- exprs_data_glialprog %>%
-  group_by(Age_Range) %>%
-  summarize(
-    avg_exprs = mean(.data[[gene]], na.rm = TRUE),
-    percent_exprs = sum(.data[[gene]] > 0, na.rm = TRUE) / n() * 100
-  )
-
-# Plot
-ggplot(summary_glialprog, aes(x = Age_Range, y = avg_exprs, size = percent_exprs)) +
-  geom_point() +
-  theme_minimal() +
-  labs(
-    title = paste("Expression of", gene, "across Age Ranges"),
-    subtitle = "GLIALPROG Cells",
-    x = "Age Range",
-    y = "Average Expression",
-    size = "% Expressing Cells"
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# loop to generate plots
+for (gene in genes_of_interest) {
+  for (lineage in lineages) {
+    if (gene == excluded_gene && lineage == excluded_lineage) {
+      message("Skipping plot for max expression (", gene, ", ", lineage, ")")
+      next
+    }
+    
+    df <- target_summary %>%
+      filter(Gene == gene, Lineage == lineage)
+    
+    generate_and_save_age_expr_plot(df, gene, lineage, y_max, max_percent, output_dir)
+  }
+}
 
 
-### dataset statistics ###
+#### 4. dataset statistics ####
 
+# General save function: generates and saves if file doesn't exist
+generate_and_save_data_stats_plot <- function(plot_obj, filename, width = 8, height = 5) {
+  filepath <- file.path(output_dir, filename)
+  if (!file.exists(filepath)) {
+    message("Saving: ", filepath)
+    ggsave(filepath, plot_obj, width = width, height = height)
+  } else {
+    message("Skipped (already exists): ", filepath)
+  }
+}
 
-## cell counts per donor ##
+# 4a. cell counts per donor
 donor_counts <- as.data.frame(table(seurat_obj$Individual))
 colnames(donor_counts) <- c("Individual", "Cell_Count")
 
-ggplot(donor_counts, aes(x = Individual, y = Cell_Count)) +
+p1 <- ggplot(donor_counts, aes(x = Individual, y = Cell_Count)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   labs(x = "Individual", y = "Number of Cells", title = "Cell Counts per Donor") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-## cell counts per age range ##
+generate_and_save_data_stats_plot(p1, "cell_counts_per_donor.pdf", width = 10)
+
+### 4b. cell counts per age range ###
 age_counts <- as.data.frame(table(seurat_obj$Age_Range))
 colnames(age_counts) <- c("Age_Range", "Cell_Count")
 
-ggplot(age_counts, aes(x = Age_Range, y = Cell_Count)) +
+p2 <- ggplot(age_counts, aes(x = Age_Range, y = Cell_Count)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   labs(x = "Age Range", y = "Number of Cells", title = "Cell Counts per Age Range") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-## cell counts per broad region ##
+generate_and_save_data_stats_plot(p2, "cell_counts_per_age_range.pdf")
+
+### 4c. cell counts per broad region ###
 region_counts <- as.data.frame(table(seurat_obj$Region_Broad))
 colnames(region_counts) <- c("Region_Broad", "Cell_Count")
 
-ggplot(region_counts, aes(x = Region_Broad, y = Cell_Count)) +
+p3 <- ggplot(region_counts, aes(x = Region_Broad, y = Cell_Count)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   labs(x = "Broad Region", y = "Number of Cells", title = "Cell Counts per Broad Region") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+generate_and_save_data_stats_plot(p3, "cell_counts_per_broad_region.pdf")
 
-## cell types in each region ##
+### 4d. cell counts per lineage ###
+lineage_counts <- as.data.frame(table(seurat_obj$Lineage))
+colnames(lineage_counts) <- c("Lineage", "Cell_Count")
 
+p4 <- ggplot(lineage_counts, aes(x = Lineage, y = Cell_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Lineage", y = "Number of Cells", title = "Cell Counts per Lineage") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+generate_and_save_data_stats_plot(p4, "cell_counts_per_lineage.pdf")
+
+### 4e. cell type composition per region (%) ###
 region_celltype_counts <- seurat_obj@meta.data %>%
   group_by(Region_Broad, Lineage) %>%
   summarise(Count = n(), .groups = "drop")
@@ -392,123 +338,249 @@ region_celltype_percent <- region_celltype_counts %>%
   group_by(Region_Broad) %>%
   mutate(Percent = Count / sum(Count) * 100)
 
-ggplot(region_celltype_percent, aes(x = Region_Broad, y = Percent, fill = Lineage)) +
+p5 <- ggplot(region_celltype_percent, aes(x = Region_Broad, y = Percent, fill = Lineage)) +
   geom_bar(stat = "identity") +
   labs(x = "Region", y = "Cell Type Composition (%)", fill = "Cell Type",
        title = "Cell Type Composition per Brain Region") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+generate_and_save_data_stats_plot(p5, "cell_type_composition_per_region.pdf", width = 10)
 
-#### 3. Analysis of all 100 New Autism Risk Genes ####
 
-exprs_data_all <- GetAssayData(seurat_obj, assay = "RNA", slot = "data")
-exprs_data_asd <- exprs_data_all[autism_risk_genes_new$Gene[autism_risk_genes_new$Gene %in% rownames(exprs_data_all)], ]
+#### 5. Heatmap Analysis of New and Known Autism Risk Genes ####
 
-# Combine with metadata
+# Load expression data and metadata
+exprs_data_asd <- GetAssayData(seurat_obj, assay = "RNA", slot = "data")
 meta <- seurat_obj@meta.data
 meta$cell <- rownames(meta)
 
-### average expression per gene by region & lineage ###
+# Set output directory and file paths
+file_exprs_region <- file.path(output_dir, "avg_expr_region.xlsx")
+file_exprs_lineage <- file.path(output_dir, "avg_expr_lineage.xlsx")
+file_heatmap_region <- file.path(output_dir, "heatmap_avg_expr_region.pdf")
+file_heatmap_lineage <- file.path(output_dir, "heatmap_avg_expr_lineage.pdf")
+file_pct_exprs_region <- file.path(output_dir, "pct_expr_region.xlsx")
+file_pct_exprs_lineage <- file.path(output_dir, "pct_expr_lineage.xlsx")
+file_heatmap_pct_region <- file.path(output_dir, "heatmap_pct_expr_region.pdf")
+file_heatmap_pct_lineage <- file.path(output_dir, "heatmap_pct_expr_lineage.pdf")
 
-# Make df: gene | cell | expression | region
-df_region <- exprs_data_asd %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column("gene") %>%
-  pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
-  left_join(meta[, c("cell", "Region_Broad")], by = "cell")
+### 5a. avg expression per gene by region ###
+if (!file.exists(file_exprs_region)) {
+  message("Generating average expression table by Region")
+  
+  df_region <- exprs_data_asd %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+    left_join(meta[, c("cell", "Region_Broad")], by = "cell")
+  
+  avg_exprs_region <- df_region %>%
+    group_by(gene, Region_Broad) %>%
+    summarise(avg_exprs = mean(expression), .groups = "drop") %>%
+    pivot_wider(names_from = Region_Broad, values_from = avg_exprs)
+  
+  write_xlsx(avg_exprs_region, file_exprs_region)
+} else {
+  message("Average expression table by Region exists, loading...")
+  avg_exprs_region <- readxl::read_xlsx(file_exprs_region)
+}
 
-# Compute average expression per gene per region
-avg_exprs_region <- df_region %>%
-  group_by(gene, Region_Broad) %>%
-  summarise(avg_exprs = mean(expression), .groups = "drop") %>%
-  pivot_wider(names_from = Region_Broad, values_from = avg_exprs)
+### 5b. avg expression per gene by lineage ###
+if (!file.exists(file_exprs_lineage)) {
+  message("Generating average expression table by Lineage")
+  
+  df_lineage <- exprs_data_asd %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+    left_join(meta[, c("cell", "Lineage")], by = "cell")
+  
+  avg_exprs_lineage <- df_lineage %>%
+    group_by(gene, Lineage) %>%
+    summarise(avg_exprs = mean(expression), .groups = "drop") %>%
+    pivot_wider(names_from = Lineage, values_from = avg_exprs)
+  
+  write_xlsx(avg_exprs_lineage, file_exprs_lineage)
+} else {
+  message("Average expression table by Lineage exists, loading...")
+  avg_exprs_lineage <- readxl::read_xlsx(file_exprs_lineage)
+}
 
-# Make df: gene | cell | expression | cell type
-df_lineage <- exprs_data_asd %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column("gene") %>%
-  pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
-  left_join(meta[, c("cell", "Lineage")], by = "cell")
+### 5c. % expression per gene by region ###
+if (!file.exists(file_pct_exprs_region)) {
+  message("Generating % expression table by Region")
+  
+  df_region <- exprs_data_asd %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+    left_join(meta[, c("cell", "Region_Broad")], by = "cell")
+  
+  pct_exprs_region <- df_region %>%
+    group_by(gene, Region_Broad) %>%
+    summarise(pct_exprs = sum(expression > 0) / n() * 100, .groups = "drop") %>%
+    pivot_wider(names_from = Region_Broad, values_from = pct_exprs)
+  
+  write_xlsx(pct_exprs_region, file_pct_exprs_region)
+} else {
+  message("% Expression table by Region exists, loading...")
+  pct_exprs_region <- readxl::read_xlsx(file_pct_exprs_region)
+}
 
-# Compute average expression per gene per cell type
-avg_exprs_lineage <- df_lineage %>%
-  group_by(gene, Lineage) %>%
-  summarise(avg_exprs = mean(expression), .groups = "drop") %>%
-  pivot_wider(names_from = Lineage, values_from = avg_exprs)
+### 5d. % expression per gene by lineage ###
+if (!file.exists(file_pct_exprs_lineage)) {
+  message("Generating % expression table by Lineage")
+  
+  df_lineage <- exprs_data_asd %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    pivot_longer(-gene, names_to = "cell", values_to = "expression") %>%
+    left_join(meta[, c("cell", "Lineage")], by = "cell")
+  
+  pct_exprs_lineage <- df_lineage %>%
+    group_by(gene, Lineage) %>%
+    summarise(pct_exprs = sum(expression > 0) / n() * 100, .groups = "drop") %>%
+    pivot_wider(names_from = Lineage, values_from = pct_exprs)
+  
+  write_xlsx(pct_exprs_lineage, file_pct_exprs_lineage)
+} else {
+  message("% Expression table by Lineage exists, loading...")
+  pct_exprs_lineage <- readxl::read_xlsx(file_pct_exprs_lineage)
+}
 
-# write_xlsx(avg_exprs_region, "avg_exprs_region.xlsx")
-# write_xlsx(avg_exprs_lineage, "avg_exprs_lineage.xlsx")
+### 5e. heatmap by lineage ###
+if (!file.exists(file_heatmap_lineage)) {
+  message("Generating heatmap by Lineage")
+  
+  exprs_mat_lineage <- as.matrix(avg_exprs_lineage[, -1])
+  rownames(exprs_mat_lineage) <- avg_exprs_lineage$gene
+  exprs_mat_lineage_t <- t(exprs_mat_lineage)
+  
+  exprs_colors <- colorRamp2(
+    c(min(exprs_mat_lineage_t), median(exprs_mat_lineage_t), max(exprs_mat_lineage_t)),
+    c("blue", "white", "red")
+  )
+  
+  ht_lineage <- Heatmap(
+    exprs_mat_lineage_t,
+    name = "Avg Expression",
+    column_title = "Gene",
+    row_title = "Cell Type",
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    row_names_gp = gpar(fontsize = 14),
+    column_names_gp = gpar(fontsize = 6),
+    col = exprs_colors
+  )
+  
+  pdf(file_heatmap_lineage, width = 20, height = 8)
+  draw(ht_lineage)
+  dev.off()
+} else {
+  message("Lineage heatmap file exists, skipping generation.")
+}
 
-### heatmaps and clustering by lineage ###
+### 5f. heatmap by region ###
+if (!file.exists(file_heatmap_region)) {
+  message("Generating heatmap by Region")
+  
+  exprs_mat_region <- as.matrix(avg_exprs_region[, -1])
+  rownames(exprs_mat_region) <- avg_exprs_region$gene
+  exprs_mat_region_t <- t(exprs_mat_region)
+  
+  exprs_colors <- colorRamp2(
+    c(min(exprs_mat_region_t), median(exprs_mat_region_t), max(exprs_mat_region_t)),
+    c("blue", "white", "red")
+  )
+  
+  ht_region <- Heatmap(
+    exprs_mat_region_t,
+    name = "Avg Expression",
+    column_title = "Gene",
+    row_title = "Region",
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    row_names_gp = gpar(fontsize = 14),
+    column_names_gp = gpar(fontsize = 6),
+    col = exprs_colors
+  )
+  
+  pdf(file_heatmap_region, width = 20, height = 8)
+  draw(ht_region)
+  dev.off()
+} else {
+  message("Region heatmap file exists, skipping generation.")
+}
 
-exprs_mat_lineage <- as.matrix(avg_exprs_lineage[ , -1])         
-rownames(exprs_mat_lineage) <- avg_exprs_lineage$gene
+### 5g. heatmap of % exprs by lineage ###
+if (!file.exists(file_heatmap_pct_lineage)) {
+  message("Generating % exprs heatmap by Lineage")
+  
+  pct_mat_lineage <- as.matrix(pct_exprs_lineage[, -1])
+  rownames(pct_mat_lineage) <- pct_exprs_lineage$gene
+  pct_mat_lineage_t <- t(pct_mat_lineage)
+  
+  pct_colors <- colorRamp2(
+    c(min(pct_mat_lineage_t), median(pct_mat_lineage_t), max(pct_mat_lineage_t)),
+    c("blue", "white", "red")
+  )
+  
+  ht_pct_lineage <- Heatmap(
+    pct_mat_lineage_t,
+    name = "% Expressing",
+    column_title = "Gene",
+    row_title = "Cell Type",
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    row_names_gp = gpar(fontsize = 14),
+    column_names_gp = gpar(fontsize = 6),
+    col = pct_colors
+  )
+  
+  pdf(file_heatmap_pct_lineage, width = 20, height = 8)
+  draw(ht_pct_lineage)
+  dev.off()
+} else {
+  message("% Exprs Lineage heatmap exists, skipping generation.")
+}
 
-# assign colors
-exprs_colors <- colorRamp2(
-  c(min(exprs_mat_lineage), median(exprs_mat_lineage), max(exprs_mat_lineage)),
-  c("blue", "white", "red")
-)
-
-# column annotations
-lineage_anno <- HeatmapAnnotation(
-  Lineage = colnames(exprs_mat_lineage),
-  col = list(Lineage = structure(
-    rainbow(length(unique(colnames(exprs_mat_lineage)))),
-    names = colnames(exprs_mat_lineage)
-  ))
-)
-
-Heatmap(
-  exprs_mat_lineage,
-  name = "Average Expression Across Cell Types",
-  column_title = "Cell Type",
-  row_title = "Gene",
-  top_annotation = lineage_anno,
-  cluster_rows = TRUE,
-  cluster_columns = FALSE,  
-  show_row_names = TRUE,
-  show_column_names = TRUE,
-  row_names_gp = gpar(fontsize = 6),
-  column_names_gp = gpar(fontsize = 8),
-  col = exprs_colors
-)
-
-
-### heatmaps and clustering by region ###
-
-exprs_mat_region <- as.matrix(avg_exprs_region[ , -1])         
-rownames(exprs_mat_region) <- avg_exprs_region$gene
-
-# assign colors
-exprs_colors <- colorRamp2(
-  c(min(exprs_mat_region), median(exprs_mat_region), max(exprs_mat_region)),
-  c("blue", "white", "red")
-)
-
-# column annotations
-region_anno <- HeatmapAnnotation(
-  Region = colnames(exprs_mat_region),
-  col = list(Region = structure(
-    rainbow(length(unique(colnames(exprs_mat_region)))),
-    names = colnames(exprs_mat_region)
-  ))
-)
-
-Heatmap(
-  t(exprs_mat_region),
-  name = "Avg. Expr.",
-  column_title = "ASD Risk Genes",
-  row_title = "Cell_Type",
-  cluster_rows = TRUE,
-  cluster_columns = TRUE,  
-  show_row_names = TRUE,
-  show_column_names = TRUE,
-  row_names_gp = gpar(fontsize = 16),
-  column_names_gp = gpar(fontsize = 6),
-  col = exprs_colors
-)
-
-
-
+### 5h. heatmap of % exprs by region ###
+if (!file.exists(file_heatmap_pct_region)) {
+  message("Generating % exprs heatmap by Region")
+  
+  pct_mat_region <- as.matrix(pct_exprs_region[, -1])
+  rownames(pct_mat_region) <- pct_exprs_region$gene
+  pct_mat_region_t <- t(pct_mat_region)
+  
+  pct_colors <- colorRamp2(
+    c(min(pct_mat_region_t), median(pct_mat_region_t), max(pct_mat_region_t)),
+    c("blue", "white", "red")
+  )
+  
+  ht_pct_region <- Heatmap(
+    pct_mat_region_t,
+    name = "% Expressing",
+    column_title = "Gene",
+    row_title = "Region",
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    row_names_gp = gpar(fontsize = 14),
+    column_names_gp = gpar(fontsize = 6),
+    col = pct_colors
+  )
+  
+  pdf(file_heatmap_pct_region, width = 20, height = 8)
+  draw(ht_pct_region)
+  dev.off()
+} else {
+  message("% Exprs Region heatmap exists, skipping generation.")
+}
