@@ -25,7 +25,8 @@ library(circlize)
 library(tibble)
 library(grid)
 
-seurat_obj <- readRDS("seurat_obj_subset.rds")
+seurat_obj_path <- file.path(base_dir, "seurat_obj_subset.rds")
+seurat_obj <- readRDS(seurat_obj_path)
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
 
 #### 1. Feature Plot ####
