@@ -2,6 +2,7 @@ setwd("/home/abbiew/single_cell/braun")
 seurat_paths <- list.files("./5_Saved_seurat_obj", pattern = "*.rds", full.names = TRUE)
 tmp <- read.csv("/home/abbiew/single_cell/autism_risk_genes_combined.csv", sep = ",", header = TRUE)
 asd_risk_genes <- tmp$Gene
+asd_risk_genes <- c(asd_risk_genes, "SORCS2")
 
 library(Seurat)
 
