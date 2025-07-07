@@ -41,6 +41,7 @@ processed_list <- lapply(seurat_paths, process_and_subset, genes = asd_risk_gene
 combined_seurat <- merge(x = processed_list[[1]], y = processed_list[-1])
 
 merged_cell_rankings <- do.call(cbind, cell_rankings_list)
+merged_cell_rankings <- 1 - (merged_cell_rankings / 26261 * 100)
 saveRDS(merged_cell_rankings, file = "cell_rankings_combined.rds")
 
 saveRDS(combined_seurat, "seurat_obj_subset_combined.rds")
