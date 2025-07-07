@@ -32,7 +32,7 @@ process_and_subset <- function(path, genes) {
                                                     assay = DefaultAssay(seurat_obj))
 
   # 4. subset to ASD risk genes only 
-  seurat_obj <- seurat_obj[asd_risk_genes, ]
+  seurat_obj <- seurat_obj[rownames(seurat_obj) %in% asd_risk_genes, ]
 
   return(seurat_obj)
 }
