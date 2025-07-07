@@ -9,7 +9,10 @@ process_and_subset <- function(path, genes) {
   seurat_obj <- readRDS(path)
 
   # 1. log2 transformation
-  seurat_obj@assays$RNA@layers$data@x <- log2(seurat_obj@assays$RNA@layers$data@x + 1)
+  expr_data <- GetAssayData(seurat_obj, assay = "RNA", slot = "data")
+  log_expr <- log2(expr_data + 1)
+  seurat_obj <- SetAssayData(seurat_obj, assay = "RNA", slot = "data", new.data = log_expr)
+
   Idents(seurat_obj, cells = seurat_obj$Cell_name) <- seurat_obj$Cell_type_raw
 
   # 2. add tsne coordinates
@@ -24,7 +27,12 @@ process_and_subset <- function(path, genes) {
   return(seurat_obj)
 }
 
-processed_list <- lapply(seurat_paths, process_and_subset, genes = asd_risk_genes)
-combined_seurat <- merge(x = processed_list[[1]], y = processed_list[-1])
+processed_list <- list()
+for (i in seq_along(seurat_paths)) {
+  processed_list[[i]] <- process_and_subset(seurat_paths[[i]], genes = asd_risk_genes)
+  gc()  # Trigger garbage collection
+}
+
+combined_seurat <- Reduce(function(x, y) merge(x, y), processed_list)
 
 saveRDS(combined_seurat, "seurat_obj_subset_combined.rds")
