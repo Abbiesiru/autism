@@ -19,9 +19,7 @@ process_and_subset <- function(path, genes) {
     keepZeroesAsNA = FALSE,
     verbose = TRUE
   )
-  subset_rankings <- cell_rankings[genes, , drop = FALSE]
-  cell_rankings_list[[basename(path)]] <<- subset_rankings 
-  
+  cell_rankings_subset <- getRanking(cell_rankings)[rownames(cell_rankings) %in% asd_risk_genes, ]
 
   # 2. log2 transformation
   seurat_obj@assays$RNA@layers$data@x <- log2(seurat_obj@assays$RNA@layers$data@x + 1)
