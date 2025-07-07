@@ -1,0 +1,22 @@
+setwd("/home/abbiew/single_cell/velmeshev")
+tmp <- read.csv("/home/abbiew/single_cell/autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+asd_risk_genes <- tmp$Gene
+
+library(Seurat)
+library(AUCell)
+
+seurat_obj <- readRDS(path)
+expr_mat <- GetAssayData(object = seurat_obj, assay = "RNA", slot = "counts")
+  
+cell_rankings <- AUCell_buildRankings(
+  expr_mat,
+  plotStats = FALSE,
+  keepZeroesAsNA = FALSE,
+  verbose = TRUE
+)
+  
+subset_rankings <- getRanking(cell_rankings)[rownames(cell_rankings) %in% genes, ]
+subset_rankings <- 1 - (subset_rankings / 26261 * 100)
+
+# Save combined matrix
+saveRDS(subset_rankings, file = "cell_rankings_velmeshev.rds")
