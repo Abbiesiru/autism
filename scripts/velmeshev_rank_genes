@@ -16,7 +16,7 @@ cell_rankings <- AUCell_buildRankings(
 )
   
 subset_rankings <- getRanking(cell_rankings)[rownames(cell_rankings) %in% genes, ]
-subset_rankings <- 1 - (subset_rankings / 26261 * 100)
+subset_rankings <- 1 - (subset_rankings / max(subset_rankings))
 
 # Save combined matrix
 saveRDS(subset_rankings, file = "cell_rankings_velmeshev.rds")
