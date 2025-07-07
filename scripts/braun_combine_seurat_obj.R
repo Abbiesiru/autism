@@ -5,8 +5,6 @@ asd_risk_genes <- tmp$Gene
 
 library(Seurat)
 library(AUCell)
-library(data.table)
-library(readr)
 
 cell_rankings_list <- list()
 
@@ -45,6 +43,6 @@ processed_list <- lapply(seurat_paths, process_and_subset, genes = asd_risk_gene
 combined_seurat <- merge(x = processed_list[[1]], y = processed_list[-1])
 
 merged_cell_rankings <- do.call(cbind, cell_rankings_list)
-write.csv(as.data.frame(merged_cell_rankings), "cell_rankings_combined.csv")
+saveRDS(merged_cell_rankings, file = "cell_rankings_combined.rds")
 
 saveRDS(combined_seurat, "seurat_obj_subset_combined.rds")
