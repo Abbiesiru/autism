@@ -30,7 +30,7 @@ process_and_subset <- function(path, genes) {
 processed_list <- list()
 for (i in seq_along(seurat_paths)) {
   processed_list[[i]] <- process_and_subset(seurat_paths[[i]], genes = asd_risk_genes)
-  gc()  # Trigger garbage collection
+  gc()  # garbage collection
 }
 
 combined_seurat <- Reduce(function(x, y) merge(x, y), processed_list)
