@@ -15,7 +15,7 @@ process_and_subset <- function(path, genes) {
   expr_mat <- GetAssayData(object = seurat_obj, assay = "RNA", slot = "counts")
   cell_rankings <- AUCell_buildRankings(
     expr_mat,
-    plotStats = TRUE,
+    plotStats = FALSE,
     keepZeroesAsNA = FALSE,
     verbose = TRUE
   )
