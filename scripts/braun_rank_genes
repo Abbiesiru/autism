@@ -30,4 +30,4 @@ merged_cell_rankings <- do.call(cbind, cell_rankings_list)
 merged_cell_rankings <- 1 - (merged_cell_rankings / 26261 * 100)
 
 # Save combined matrix
-saveRDS(merged_cell_rankings, file = "cell_rankings_combined.rds")
+saveRDS(merged_cell_rankings, file = "cell_rankings_braun.rds")
