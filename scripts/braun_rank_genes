@@ -12,7 +12,7 @@ rank_genes <- function(path, genes) {
   seurat_obj <- subset(seurat_obj, features = common_genes)
   expr_mat <- GetAssayData(seurat_obj, assay = "RNA", slot = "counts")
   
-  ranked_expr <- apply(expr_mat, 2, rank, ties.method = "average")
+  ranked_expr <- apply(expr_mat, 2, function(x) rank(-x, ties.method = "max"))
   ranked_subset <- ranked_expr[intersect(common_genes, asd_risk_genes), , drop = FALSE]
 
   return(ranked_subset)
