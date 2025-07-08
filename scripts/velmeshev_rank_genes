@@ -5,7 +5,7 @@ asd_risk_genes <- tmp$Gene
 library(Seurat)
 library(AUCell)
 
-seurat_obj <- readRDS(path)
+seurat_obj <- readRDS("./seurat_obj.rds")
 expr_mat <- GetAssayData(object = seurat_obj, assay = "RNA", slot = "counts")
   
 cell_rankings <- AUCell_buildRankings(
