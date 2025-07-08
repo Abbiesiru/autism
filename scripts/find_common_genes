@@ -1,0 +1,10 @@
+setwd("/home/abbiew/single_cell")
+tmp <- read.csv("/home/abbiew/single_cell/autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+asd_risk_genes <- tmp$Gene
+d1 <- readRDS("./braun/5_Saved_seurat_obj/Braun_Science_2023.scRNA.Brain.CPM.rds")
+d2 <- readRDS("./velmeshev/seurat_obj.rds")
+braun <- rownames(d1) # 26261 genes
+velmeshev <- rownames(d2) # 20116 genes
+
+genes <- intersect(braun, velmeshev) # 16228 genes
+saveRDS(genes, file = "common_genes.rds")

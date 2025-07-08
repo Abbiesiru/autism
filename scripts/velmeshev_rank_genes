@@ -1,0 +1,20 @@
+setwd("/home/abbiew/single_cell/velmeshev")
+tmp <- read.csv("/home/abbiew/single_cell/autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+asd_risk_genes <- tmp$Gene
+common_genes <- readRDS("/home/abbiew/single_cell/common_genes.rds")
+
+library(Seurat)
+library(matrixStats)
+
+seurat_obj <- readRDS("./seurat_obj.rds")
+seurat_obj <- subset(seurat_obj, features = common_genes)
+expr_mat <- GetAssayData(object = seurat_obj, assay = "RNA", slot = "counts")
+
+ranked_expr <- apply(expr_mat, 2, function(x) rank(-x, ties.method = "max"))
+ranked_subset <- ranked_expr[intersect(common_genes, asd_risk_genes), , drop = FALSE]
+  
+# normalize rankings
+ranked_subset <- 1 - (ranked_subset / length(common_genes))
+
+# save combined matrix
+saveRDS(ranked_subset, file = "cell_rankings_velmeshev.rds")

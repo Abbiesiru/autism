@@ -1,0 +1,29 @@
+setwd("/home/abbiew/single_cell/braun")
+seurat_paths <- list.files("./5_Saved_seurat_obj", pattern = "*.rds", full.names = TRUE)
+tmp <- read.csv("/home/abbiew/single_cell/autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+asd_risk_genes <- tmp$Gene
+common_genes <- readRDS("/home/abbiew/single_cell/common_genes.rds")
+
+library(Seurat)
+library(matrixStats)
+
+rank_genes <- function(path, genes) {
+  seurat_obj <- readRDS(path)
+  seurat_obj <- subset(seurat_obj, features = common_genes)
+  expr_mat <- GetAssayData(seurat_obj, assay = "RNA", slot = "counts")
+  
+  ranked_expr <- apply(expr_mat, 2, function(x) rank(-x, ties.method = "max"))
+  ranked_subset <- ranked_expr[intersect(common_genes, genes), , drop = FALSE]
+
+  return(ranked_subset)
+}
+
+cell_rankings_list <- lapply(seurat_paths, rank_genes, genes = asd_risk_genes)
+names(cell_rankings_list) <- basename(seurat_paths)
+
+# combine and normalize rankings
+merged_cell_rankings <- do.call(cbind, cell_rankings_list)
+merged_cell_rankings <- 1 - (merged_cell_rankings / length(common_genes))
+
+# save combined matrix
+saveRDS(merged_cell_rankings, file = "cell_rankings_braun.rds")
