@@ -15,7 +15,7 @@ cell_rankings <- AUCell_buildRankings(
   verbose = TRUE
 )
   
-subset_rankings <- getRanking(cell_rankings)[rownames(cell_rankings) %in% genes, ]
+subset_rankings <- getRanking(cell_rankings)[rownames(cell_rankings) %in% asd_risk_genes, ]
 subset_rankings <- 1 - (subset_rankings / max(subset_rankings))
 
 # Save combined matrix
