@@ -356,6 +356,9 @@ exprs_data_asd <- GetAssayData(seurat_obj, assay = "RNA", slot = "data")
 meta <- seurat_obj@meta.data
 meta$cell <- rownames(meta)
 
+# Load rank data
+rank_data <- readRDS(file.path(base_dir, "cell_rankings_velmeshev.rds"))
+
 # Set output directory and file paths
 file_exprs_region <- file.path(output_dir, "avg_expr_region.xlsx")
 file_exprs_lineage <- file.path(output_dir, "avg_expr_lineage.xlsx")
@@ -365,6 +368,10 @@ file_pct_exprs_region <- file.path(output_dir, "pct_expr_region.xlsx")
 file_pct_exprs_lineage <- file.path(output_dir, "pct_expr_lineage.xlsx")
 file_heatmap_pct_region <- file.path(output_dir, "heatmap_pct_expr_region.pdf")
 file_heatmap_pct_lineage <- file.path(output_dir, "heatmap_pct_expr_lineage.pdf")
+file_rank_region <- file.path(output_dir, "avg_rank_region.xlsx")
+file_rank_lineage <- file.path(output_dir, "avg_rank_lineage.xlsx")
+file_heatmap_rank_region <- file.path(output_dir, "heatmap_avg_rank_region.pdf")
+file_heatmap_rank_lineage <- file.path(output_dir, "heatmap_avg_rank_lineage.pdf")
 
 ### 5a. avg expression per gene by region ###
 if (!file.exists(file_exprs_region)) {
@@ -450,7 +457,51 @@ if (!file.exists(file_pct_exprs_lineage)) {
   pct_exprs_lineage <- readxl::read_xlsx(file_pct_exprs_lineage)
 }
 
-### 5e. heatmap by lineage ###
+### 5e. avg rank per gene by region ###
+
+if (!file.exists(file_rank_region)) {
+  message("Generating average rank table by Region")
+  
+  df_region <- rank_data %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    pivot_longer(-gene, names_to = "cell", values_to = "rank") %>%
+    left_join(meta[, c("cell", "Region_Broad")], by = "cell")
+  
+  avg_rank_region <- df_region %>%
+    group_by(gene, Region_Broad) %>%
+    summarise(avg_rank = mean(rank), .groups = "drop") %>%
+    pivot_wider(names_from = Region_Broad, values_from = avg_rank)
+  
+  write_xlsx(avg_rank_region, file_rank_region)
+} else {
+  message("Average rank table by Region exists, loading...")
+  avg_rank_region <- readxl::read_xlsx(file_rank_region)
+}
+
+### 5f. avg rank per gene by lineage ###
+
+if (!file.exists(file_rank_lineage)) {
+  message("Generating average rank table by Lineage")
+  
+  df_lineage <- rank_data %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    pivot_longer(-gene, names_to = "cell", values_to = "rank") %>%
+    left_join(meta[, c("cell", "Lineage")], by = "cell")
+  
+  avg_rank_lineage <- df_lineage %>%
+    group_by(gene, Lineage) %>%
+    summarise(avg_rank = mean(rank), .groups = "drop") %>%
+    pivot_wider(names_from = Lineage, values_from = avg_rank)
+  
+  write_xlsx(avg_rank_lineage, file_rank_lineage)
+} else {
+  message("Average rank table by Lineage exists, loading...")
+  avg_rank_lineage <- readxl::read_xlsx(file_rank_lineage)
+}
+
+### 5g. heatmap by lineage ###
 if (!file.exists(file_heatmap_lineage)) {
   message("Generating heatmap by Lineage")
   
@@ -484,7 +535,7 @@ if (!file.exists(file_heatmap_lineage)) {
   message("Lineage heatmap file exists, skipping generation.")
 }
 
-### 5f. heatmap by region ###
+### 5h. heatmap by region ###
 if (!file.exists(file_heatmap_region)) {
   message("Generating heatmap by Region")
   
@@ -518,7 +569,7 @@ if (!file.exists(file_heatmap_region)) {
   message("Region heatmap file exists, skipping generation.")
 }
 
-### 5g. heatmap of % exprs by lineage ###
+### 5i. heatmap of % exprs by lineage ###
 if (!file.exists(file_heatmap_pct_lineage)) {
   message("Generating % exprs heatmap by Lineage")
   
@@ -552,7 +603,7 @@ if (!file.exists(file_heatmap_pct_lineage)) {
   message("% Exprs Lineage heatmap exists, skipping generation.")
 }
 
-### 5h. heatmap of % exprs by region ###
+### 5j. heatmap of % exprs by region ###
 if (!file.exists(file_heatmap_pct_region)) {
   message("Generating % exprs heatmap by Region")
   
@@ -585,3 +636,73 @@ if (!file.exists(file_heatmap_pct_region)) {
 } else {
   message("% Exprs Region heatmap exists, skipping generation.")
 }
+
+
+### 5k. heatmap for rank by region ###
+if (!file.exists(file_heatmap_rank_region)) {
+  message("Generating rank heatmap by Region")
+  
+  rank_mat_region <- as.matrix(avg_rank_region[, -1])
+  rownames(rank_mat_region) <- avg_rank_region$gene
+  rank_mat_region_t <- t(rank_mat_region)
+  
+  exprs_colors <- colorRamp2(
+    c(min(rank_mat_region_t), median(rank_mat_region_t), max(rank_mat_region_t)),
+    c("blue", "white", "red")
+  )
+  
+  ht_region <- Heatmap(
+    rank_mat_region_t,
+    name = "Avg Rank",
+    column_title = "Gene",
+    row_title = "Region",
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    row_names_gp = gpar(fontsize = 14),
+    column_names_gp = gpar(fontsize = 6),
+    col = exprs_colors
+  )
+  
+  pdf(file_heatmap_rank_region, width = 20, height = 8)
+  draw(ht_region)
+  dev.off()
+} else {
+  message("Region rank heatmap file exists, skipping generation.")
+}
+
+### 5l. heatmap for rank by lineage ###
+if (!file.exists(file_heatmap_rank_lineage)) {
+  message("Generating rank heatmap by Lineage")
+  
+  rank_mat_lineage <- as.matrix(avg_rank_lineage[, -1])
+  rownames(rank_mat_lineage) <- avg_rank_lineage$gene
+  rank_mat_lineage_t <- t(rank_mat_lineage)
+  
+  exprs_colors <- colorRamp2(
+    c(min(rank_mat_lineage_t), median(rank_mat_lineage_t), max(rank_mat_lineage_t)),
+    c("blue", "white", "red")
+  )
+  
+  ht_lineage <- Heatmap(
+    rank_mat_lineage_t,
+    name = "Avg Rank",
+    column_title = "Gene",
+    row_title = "Cell Type",
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    row_names_gp = gpar(fontsize = 14),
+    column_names_gp = gpar(fontsize = 6),
+    col = exprs_colors
+  )
+  
+  pdf(file_heatmap_rank_lineage, width = 20, height = 8)
+  draw(ht_lineage)
+  dev.off()
+} else {
+  message("Lineage rank heatmap file exists, skipping generation.")
+}
+
