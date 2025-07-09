@@ -1,36 +1,82 @@
+library(Seurat)
+library(Matrix)
+
 base_dir <- switch(Sys.info()[["nodename"]],
                    "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat/braun",
                    "gauss" = "/home/abbiew/single_cell/braun",
-                   "."
-)
+                   ".")
 
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_combined.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 
-library(Seurat)
-library(Matrix)
+rna_assay <- seurat_obj[["RNA"]]
 
-# Get all layer names
-layer_names <- Layers(seurat_obj[["RNA"]])
+layer_names <- Layers(rna_assay)
 
-# Filter for counts and data layers
 counts_layers <- grep("^counts\\.", layer_names, value = TRUE)
 data_layers <- grep("^data\\.", layer_names, value = TRUE)
 
-# Initialize merged matrices
+# Merge counts matrices
 merged_counts <- NULL
-merged_data <- NULL
-
-# Merge counts layers
 for (layer in counts_layers) {
-  cat("Processing", layer, "\n")
-  mat <- Seurat:::GetMultiLayerData(seurat_obj, assay = "RNA", slot = "counts", layer = layer)
+  cat("Processing counts layer:", layer, "\n")
+  mat <- rna_assay@layers[[layer]]
+  
+  # Ensure colnames exist and are unique with prefix
+  if (is.null(colnames(mat))) {
+    colnames(mat) <- paste0(layer, "_cell", seq_len(ncol(mat)))
+  } else {
+    colnames(mat) <- paste(layer, colnames(mat), sep = "_")
+  }
+  
+  # Ensure rownames exist (use RNA assay gene names as fallback)
+  if (is.null(rownames(mat))) {
+    rownames(mat) <- rownames(rna_assay)
+  }
+  
   merged_counts <- if (is.null(merged_counts)) mat else Matrix::cbind2(merged_counts, mat)
 }
 
-# Merge data layers
+# Merge data matrices
+merged_data <- NULL
 for (layer in data_layers) {
-  cat("Processing", layer, "\n")
-  mat <- Seurat:::GetMultiLayerData(seurat_obj, assay = "RNA", slot = "data", layer = layer)
+  cat("Processing data layer:", layer, "\n")
+  mat <- rna_assay@layers[[layer]]
+  
+  if (is.null(colnames(mat))) {
+    colnames(mat) <- paste0(layer, "_cell", seq_len(ncol(mat)))
+  } else {
+    colnames(mat) <- paste(layer, colnames(mat), sep = "_")
+  }
+  
+  if (is.null(rownames(mat))) {
+    rownames(mat) <- rownames(rna_assay)
+  }
+  
   merged_data <- if (is.null(merged_data)) mat else Matrix::cbind2(merged_data, mat)
 }
+
+original_cells <- colnames(seurat_obj[["RNA"]])
+colnames(merged_counts) <- original_cells
+colnames(merged_data) <- original_cells
+
+# Create new assay with merged counts
+merged_assay <- CreateAssayObject(counts = merged_counts)
+
+
+if (!is.null(merged_data)) {
+  merged_assay@data <- as(merged_data, "CsparseMatrix")
+}
+
+
+# Add new assay to Seurat object
+seurat_obj[["merged"]] <- merged_assay
+
+
+# Optionally, set default assay
+DefaultAssay(seurat_obj) <- "merged"
+
+# Save updated Seurat object
+saveRDS(seurat_obj, file = file.path(base_dir, "seurat_obj_with_merged_assay.rds"))
+
+cat("Merged assay 'merged' created and saved successfully.\n")
