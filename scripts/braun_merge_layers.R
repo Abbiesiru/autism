@@ -68,15 +68,12 @@ if (!is.null(merged_data)) {
   merged_assay@data <- as(merged_data, "CsparseMatrix")
 }
 
-
 # Add new assay to Seurat object
 seurat_obj[["merged"]] <- merged_assay
-
-
-# Optionally, set default assay
 DefaultAssay(seurat_obj) <- "merged"
+seurat_obj[["RNA"]] <- NULL
 
 # Save updated Seurat object
-saveRDS(seurat_obj, file = file.path(base_dir, "seurat_obj_with_merged_assay.rds"))
+saveRDS(seurat_obj, file = file.path(base_dir, "seurat_obj_merged_layers.rds"))
 
-cat("Merged assay 'merged' created and saved successfully.\n")
+
