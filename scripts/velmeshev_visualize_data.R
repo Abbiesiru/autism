@@ -24,10 +24,12 @@ library(ComplexHeatmap)
 library(circlize)
 library(tibble)
 library(grid)
+library(readxl)
 
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
+group_vars <- c("Lineage", "Region")
 
 #### 1. Feature Plot ####
 
@@ -127,6 +129,7 @@ for (group_var in group_vars) {
 
 #### 2. Dot Plot ####
 
+### 2a. Avg expression & % expressing ###
 for (group_var in group_vars) {
   filename <- paste0("dot_plot_", tolower(group_var), ".pdf")
   filepath <- file.path(output_dir, filename)
@@ -149,6 +152,63 @@ for (group_var in group_vars) {
       ggtitle(title_text) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
     
+    if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+    ggsave(filepath, plot = p, width = 10, height = 6, units = "in")
+  } else {
+    message("Skipped (already exists): ", filepath)
+  }
+}
+
+### 2b. Avg rank & % expressing ###
+
+for (group_var in group_vars) {
+  
+  # File paths
+  file_rank <- file.path(output_dir, paste0("avg_rank_", tolower(group_var), ".xlsx"))
+  file_pct_expr <- file.path(output_dir, paste0("pct_expr_", tolower(group_var), ".xlsx"))
+  filename <- paste0("dot_plot_avg_rank_", tolower(group_var), ".pdf")
+  filepath <- file.path(output_dir, filename)
+  
+  # Skip if file already exists
+  if (!file.exists(filepath)) {
+    message("Generating and saving: ", filepath)
+    
+    rank_df <- read_xlsx(file_rank) %>% as.data.frame()
+    pct_df <- read_xlsx(file_pct_expr) %>% as.data.frame()
+    rank_df$gene <- read_xlsx(file_rank)$gene
+    pct_df$gene <- read_xlsx(file_pct_expr)$gene
+    
+    # Pivot to long format
+    rank_long <- pivot_longer(rank_df, -gene, names_to = "celltype", values_to = "avg_rank")
+    pct_long  <- pivot_longer(pct_df, -gene, names_to = "celltype", values_to = "pct_expr")
+    
+    dot_df <- left_join(rank_long, pct_long, by = c("gene", "celltype"))
+    
+    dot_df_subset <- dot_df %>% filter(gene %in% genes_of_interest)
+    
+    # # Handle missing/NA value
+    # dot_df_subset$pct_expr[is.na(dot_df_subset$pct_expr)] <- 0
+    # dot_df_subset$avg_rank[is.na(dot_df_subset$avg_rank)] <- max(dot_df_subset$avg_rank, na.rm = TRUE)
+    
+    # plot
+    title_text <- paste(
+      paste(genes_of_interest, collapse = ", "),
+      "ranked expression by",
+      gsub("_", " ", tolower(group_var))
+    )
+    
+    p <- ggplot(dot_df_subset, aes(x = gene, y = celltype)) +
+      geom_point(aes(size = pct_expr, color = avg_rank)) +
+      scale_color_viridis_c(direction = -1, name = "Avg Rank") +
+      scale_size(range = c(1, 8), name = "% Expressing") +
+      ggtitle(title_text) +
+      theme_minimal(base_size = 13) +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_blank()
+      )
+    
+    # save
     if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
     ggsave(filepath, plot = p, width = 10, height = 6, units = "in")
   } else {

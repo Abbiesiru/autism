@@ -3,7 +3,7 @@ base_dir <- switch(Sys.info()[["nodename"]],
                    "gauss" = "/home/abbiew/single_cell/velmeshev",
                    "."
 )
-setwd("C:/Abbie/research/seurat")
+setwd("C:/Abbie/research/seurat/prepostnatal")
 
 library(dplyr)
 library(Seurat)
