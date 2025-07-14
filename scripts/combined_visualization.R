@@ -97,7 +97,6 @@ neuronal_b <- process_rank_and_percent(
   rank_mat = rank_mat_b,
   expr_mat = expr_mat_b,
   seurat_obj = b,
-  gene_col = "Gene",
   age_col = "Developmental_week",
   cell_col = "Cell_type_raw",
   cell_types = neuronal_types_b,
