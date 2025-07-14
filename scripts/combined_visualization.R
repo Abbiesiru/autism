@@ -15,6 +15,8 @@ if (!dir.exists(output_dir)) {
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(Seurat)
+
 
 rank_mat_b <- readRDS(file.path(base_dir, "/braun/cell_rankings_braun.rds"))
 rank_mat_v <- readRDS(file.path(base_dir, "/prepostnatal/cell_rankings_velmeshev.rds"))
