@@ -43,4 +43,11 @@ seurat_obj_subset <- seurat_obj[ASD_risk_genes$Gene, ]
 age_levels <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", "4-10 years", "10-20 years", "Adult")
 seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
 
-saveRDS(seurat_obj_subset, "seurat_obj_subset.rds")
+# saveRDS(seurat_obj_subset, "seurat_obj_subset.rds")
+# seurat_obj_path <- file.path(base_dir, "seurat_obj_subset.rds")
+# seurat_obj_subset <- readRDS(seurat_obj_path)
+
+# subset to 266 common asd risk genes
+common_asd_risk_genes <- readRDS("C:/Abbie/research/seurat/common_asd_risk_genes.rds")
+seurat_obj_subset <- seurat_obj_subset[common_asd_risk_genes, ]
+saveRDS(seurat_obj_subset, file.path(base_dir, "seurat_obj_subset_common_genes.rds"))

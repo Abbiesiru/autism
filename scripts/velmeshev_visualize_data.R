@@ -25,7 +25,7 @@ library(circlize)
 library(tibble)
 library(grid)
 
-seurat_obj_path <- file.path(base_dir, "seurat_obj_subset.rds")
+seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
 
@@ -359,6 +359,11 @@ meta$cell <- rownames(meta)
 # Load rank data
 rank_data <- readRDS(file.path(base_dir, "cell_rankings_velmeshev.rds"))
 
+# Load ASD risk genes
+asd_risk_genes <- read.csv("autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+asd_risk_genes <- asd_risk_genes[asd_risk_genes$Gene %in% rownames(seurat_obj), ]
+gene_status <- setNames(asd_risk_genes$Status, asd_risk_genes$Gene)
+
 # Set output directory and file paths
 file_exprs_region <- file.path(output_dir, "avg_expr_region.xlsx")
 file_exprs_lineage <- file.path(output_dir, "avg_expr_lineage.xlsx")
@@ -509,6 +514,15 @@ if (!file.exists(file_heatmap_lineage)) {
   rownames(exprs_mat_lineage) <- avg_exprs_lineage$gene
   exprs_mat_lineage_t <- t(exprs_mat_lineage)
   
+  gene_status <- gene_status[colnames(exprs_mat_lineage_t)] # reorder gene status
+  # col annotation
+  col_annot <- HeatmapAnnotation(
+    GeneStatus = gene_status,
+    col = list(GeneStatus = c("Known" = "steelblue", "New" = "salmon")),
+    annotation_name_side = "left"
+  )
+  
+  
   exprs_colors <- colorRamp2(
     c(min(exprs_mat_lineage_t), median(exprs_mat_lineage_t), max(exprs_mat_lineage_t)),
     c("blue", "white", "red")
@@ -525,7 +539,8 @@ if (!file.exists(file_heatmap_lineage)) {
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
     column_names_gp = gpar(fontsize = 6),
-    col = exprs_colors
+    col = exprs_colors,
+    top_annotation = col_annot
   )
   
   pdf(file_heatmap_lineage, width = 20, height = 8)
@@ -543,6 +558,14 @@ if (!file.exists(file_heatmap_region)) {
   rownames(exprs_mat_region) <- avg_exprs_region$gene
   exprs_mat_region_t <- t(exprs_mat_region)
   
+  gene_status <- gene_status[colnames(exprs_mat_region_t)] # reorder gene status
+  # col annotation
+  col_annot <- HeatmapAnnotation(
+    GeneStatus = gene_status,
+    col = list(GeneStatus = c("Known" = "steelblue", "New" = "salmon")),
+    annotation_name_side = "left"
+  )
+  
   exprs_colors <- colorRamp2(
     c(min(exprs_mat_region_t), median(exprs_mat_region_t), max(exprs_mat_region_t)),
     c("blue", "white", "red")
@@ -559,7 +582,8 @@ if (!file.exists(file_heatmap_region)) {
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
     column_names_gp = gpar(fontsize = 6),
-    col = exprs_colors
+    col = exprs_colors,
+    top_annotation = col_annot
   )
   
   pdf(file_heatmap_region, width = 20, height = 8)
@@ -577,6 +601,14 @@ if (!file.exists(file_heatmap_pct_lineage)) {
   rownames(pct_mat_lineage) <- pct_exprs_lineage$gene
   pct_mat_lineage_t <- t(pct_mat_lineage)
   
+  gene_status <- gene_status[colnames(pct_mat_lineage_t)] # reorder gene status
+  # col annotation
+  col_annot <- HeatmapAnnotation(
+    GeneStatus = gene_status,
+    col = list(GeneStatus = c("Known" = "steelblue", "New" = "salmon")),
+    annotation_name_side = "left"
+  )
+  
   pct_colors <- colorRamp2(
     c(min(pct_mat_lineage_t), median(pct_mat_lineage_t), max(pct_mat_lineage_t)),
     c("blue", "white", "red")
@@ -593,7 +625,8 @@ if (!file.exists(file_heatmap_pct_lineage)) {
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
     column_names_gp = gpar(fontsize = 6),
-    col = pct_colors
+    col = pct_colors,
+    top_annotation = col_annot
   )
   
   pdf(file_heatmap_pct_lineage, width = 20, height = 8)
@@ -611,6 +644,14 @@ if (!file.exists(file_heatmap_pct_region)) {
   rownames(pct_mat_region) <- pct_exprs_region$gene
   pct_mat_region_t <- t(pct_mat_region)
   
+  gene_status <- gene_status[colnames(pct_mat_region_t)] # reorder gene status
+  # col annotation
+  col_annot <- HeatmapAnnotation(
+    GeneStatus = gene_status,
+    col = list(GeneStatus = c("Known" = "steelblue", "New" = "salmon")),
+    annotation_name_side = "left"
+  )
+  
   pct_colors <- colorRamp2(
     c(min(pct_mat_region_t), median(pct_mat_region_t), max(pct_mat_region_t)),
     c("blue", "white", "red")
@@ -627,7 +668,8 @@ if (!file.exists(file_heatmap_pct_region)) {
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
     column_names_gp = gpar(fontsize = 6),
-    col = pct_colors
+    col = pct_colors,
+    top_annotation = col_annot
   )
   
   pdf(file_heatmap_pct_region, width = 20, height = 8)
@@ -646,6 +688,14 @@ if (!file.exists(file_heatmap_rank_region)) {
   rownames(rank_mat_region) <- avg_rank_region$gene
   rank_mat_region_t <- t(rank_mat_region)
   
+  gene_status <- gene_status[colnames(rank_mat_region_t)] # reorder gene status
+  # col annotation
+  col_annot <- HeatmapAnnotation(
+    GeneStatus = gene_status,
+    col = list(GeneStatus = c("Known" = "steelblue", "New" = "salmon")),
+    annotation_name_side = "left"
+  )
+  
   exprs_colors <- colorRamp2(
     c(min(rank_mat_region_t), median(rank_mat_region_t), max(rank_mat_region_t)),
     c("blue", "white", "red")
@@ -662,7 +712,8 @@ if (!file.exists(file_heatmap_rank_region)) {
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
     column_names_gp = gpar(fontsize = 6),
-    col = exprs_colors
+    col = exprs_colors,
+    top_annotation = col_annot
   )
   
   pdf(file_heatmap_rank_region, width = 20, height = 8)
@@ -680,6 +731,14 @@ if (!file.exists(file_heatmap_rank_lineage)) {
   rownames(rank_mat_lineage) <- avg_rank_lineage$gene
   rank_mat_lineage_t <- t(rank_mat_lineage)
   
+  gene_status <- gene_status[colnames(rank_mat_lineage_t)] # reorder gene status
+  # col annotation
+  col_annot <- HeatmapAnnotation(
+    GeneStatus = gene_status,
+    col = list(GeneStatus = c("Known" = "steelblue", "New" = "salmon")),
+    annotation_name_side = "left"
+  )
+  
   exprs_colors <- colorRamp2(
     c(min(rank_mat_lineage_t), median(rank_mat_lineage_t), max(rank_mat_lineage_t)),
     c("blue", "white", "red")
@@ -696,7 +755,8 @@ if (!file.exists(file_heatmap_rank_lineage)) {
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
     column_names_gp = gpar(fontsize = 6),
-    col = exprs_colors
+    col = exprs_colors,
+    top_annotation = col_annot
   )
   
   pdf(file_heatmap_rank_lineage, width = 20, height = 8)
