@@ -17,7 +17,10 @@ library(tidyr)
 library(ggplot2)
 library(Seurat)
 
-
+seurat_obj_path <- file.path(base_dir, "braun/seurat_obj_merged_layers_only_processed.rds")
+b <- readRDS(seurat_obj_path)
+seurat_obj_path <- file.path(base_dir, "velmeshev/seurat_obj_subset_common_genes.rds")
+v <- readRDS(seurat_obj_path)
 rank_mat_b <- readRDS(file.path(base_dir, "/braun/cell_rankings_braun.rds"))
 rank_mat_v <- readRDS(file.path(base_dir, "/prepostnatal/cell_rankings_velmeshev.rds"))
 expr_mat_b <- GetAssayData(b, assay = "merged", slot = "data")
