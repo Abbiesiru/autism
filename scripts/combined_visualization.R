@@ -29,53 +29,64 @@ expr_mat_v <- GetAssayData(v, assay = "RNA", slot = "data")
 
 # Helper function to process both rank and percent expressed
 process_rank_and_percent <- function(rank_mat, expr_mat, seurat_obj,
-                                     gene_col, age_col, cell_col, cell_types, dataset_label) {
-  rank_df <- as.data.frame(t(rank_mat))  # cells × genes
-  rank_df$Cell <- rownames(rank_df)
+                                          cell_types, cell_col, age_col, dataset_label) {
+  # Transpose matrices: now rows = cells, columns = genes
+  rank_df <- as.data.frame(t(rank_mat))
+  expr_df <- as.data.frame(t(expr_mat))
   
-  expr_df <- as.data.frame(t(expr_mat))  # cells × genes
+  # Add cell names
+  rank_df$Cell <- rownames(rank_df)
   expr_df$Cell <- rownames(expr_df)
   
-  # Join rank + expression
-  merged <- left_join(rank_df, expr_df, by = "Cell", suffix = c("_rank", "_expr"))
+  # Merge expression and rank by Cell
+  merged <- merge(rank_df, expr_df, by = "Cell", suffixes = c("_rank", "_expr"))
   
-  # Add metadata
-  meta <- seurat_obj@meta.data %>%
-    rownames_to_column(var = "Cell") %>%  # cell barcodes become a column named "Cell"
-    select(Cell, !!sym(cell_col), !!sym(age_col)) %>%
-    filter(!!sym(cell_col) %in% cell_types)
-
+  # Extract metadata from Seurat
+  meta <- seurat_obj@meta.data
+  meta$Cell <- rownames(meta)
   
-  merged <- left_join(merged, meta, by = "Cell") %>%
-    drop_na()
+  # Filter metadata to desired cell types
+  meta <- meta[meta[[cell_col]] %in% cell_types, c("Cell", cell_col, age_col)]
+  colnames(meta) <- c("Cell", "Cell_Type", "Age")
   
-  # Pivot rank and expr side-by-side
-  rank_long <- merged %>%
-    pivot_longer(cols = ends_with("_rank"), names_to = "Gene_rank", values_to = "Rank") %>%
-    mutate(Gene = sub("_rank$", "", Gene_rank)) %>%
-    select(-Gene_rank)
+  # Merge all together
+  merged <- merge(merged, meta, by = "Cell")
   
-  expr_long <- merged %>%
-    pivot_longer(cols = ends_with("_expr"), names_to = "Gene_expr", values_to = "Expr") %>%
-    mutate(Gene = sub("_expr$", "", Gene_expr)) %>%
-    select(-Gene_expr)
+  # Get list of genes
+  gene_names <- sub("_rank$", "", grep("_rank$", colnames(merged), value = TRUE))
   
-  # Merge rank + expr
-  long_df <- left_join(rank_long, expr_long, by = c("Cell", "Gene", "Cell", "Age_Range" = age_col, "Cell_type" = cell_col))
+  # Initialize output storage
+  summary_list <- list()
   
-  # Compute summaries
-  summary <- long_df %>%
-    group_by(Gene, !!sym(cell_col), !!sym(age_col)) %>%
-    summarize(
-      avg_rank = mean(Rank, na.rm = TRUE),
-      percent_expressing = mean(Expr > 0, na.rm = TRUE) * 100,
-      .groups = "drop"
-    ) %>%
-    rename(Cell_Type = !!sym(cell_col), Age = !!sym(age_col)) %>%
-    mutate(Dataset = dataset_label)
+  for (gene in gene_names) {
+    rank_col <- paste0(gene, "_rank")
+    expr_col <- paste0(gene, "_expr")
+    
+    df <- merged[, c("Cell_Type", "Age", rank_col, expr_col)]
+    colnames(df) <- c("Cell_Type", "Age", "Rank", "Expr")
+    
+    # Aggregate by Cell_Type and Age
+    agg_df <- aggregate(df[, c("Rank", "Expr")],
+                        by = list(Gene = gene, Cell_Type = df$Cell_Type, Age = df$Age),
+                        FUN = function(x) c(mean = mean(x, na.rm = TRUE), pct = mean(x > 0, na.rm = TRUE) * 100))
+    
+    # Unpack list-columns into separate columns
+    agg_df$avg_rank <- sapply(agg_df$Rank, function(x) x[1])
+    agg_df$percent_expressing <- sapply(agg_df$Expr, function(x) x[2])
+    agg_df$Dataset <- dataset_label
+    
+    # Drop intermediate list columns
+    agg_df$Rank <- NULL
+    agg_df$Expr <- NULL
+    
+    summary_list[[gene]] <- agg_df
+  }
   
-  return(summary)
+  summary_all <- do.call(rbind, summary_list)
+  rownames(summary_all) <- NULL
+  return(summary_all)
 }
+
 
 # Neuronal lineage types
 neuronal_types_b <- c("Neuroblast", "Neuron", "Neuronal IPC")
