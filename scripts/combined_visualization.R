@@ -104,7 +104,7 @@ process_rank_and_percent <- function(rank_mat, expr_mat, seurat_obj,
 }
 
 
-
+#### 1. Neurons ####
 
 # Neuronal lineage types
 neuronal_types_b <- c("Neuroblast", "Neuron", "Neuronal IPC")
@@ -171,7 +171,7 @@ for (g in genes_of_interest) {
     geom_point(alpha = 0.9) +
     geom_line(aes(group = Dataset), linewidth = 1) +
     scale_y_continuous(limits = c(0, 1)) +
-    scale_size_continuous(name = "% Expressing", range = c(1, 6)) +
+     scale_size_continuous(name = "% Expressing", limits = c(0, 100), range = c(1, 6)) +
     labs(
       title = paste("Avg Neuronal Expression Rank -", g),
       x = "Developmental Age",
@@ -187,6 +187,149 @@ for (g in genes_of_interest) {
   # Save
   ggsave(
     filename = file.path(output_dir, paste0("rank_plot_neuronal_", g, ".pdf")),
+    plot = p,
+    width = 10,
+    height = 6
+  )
+}
+
+
+#### 2. OPCs ####
+
+# OPC for Braun: Subclass == "OPC"
+opc_b <- process_rank_and_percent(
+  rank_mat = rank_mat_b,
+  expr_mat = expr_mat_b,
+  seurat_obj = b,
+  age_col = "Developmental_week",
+  cell_col = "Subclass",
+  cell_types = "OPC",
+  dataset_label = "Braun"
+)
+
+# OPC for Velmeshev: Lineage == "OPC"
+opc_v <- process_rank_and_percent(
+  rank_mat = rank_mat_v,
+  expr_mat = expr_mat_v,
+  seurat_obj = v,
+  age_col = "Age_Range",
+  cell_col = "Lineage",
+  cell_types = "OPC",
+  dataset_label = "Velmeshev"
+)
+
+# Combine Braun + Velmeshev OPC summaries
+opc_data <- rbind(opc_b, opc_v)
+
+# Ensure Age is ordered factor
+opc_data$Age <- factor(opc_data$Age, levels = age_levels, ordered = TRUE)
+
+# --- Plot loop (same as before) ---
+for (g in genes_of_interest) {
+  gene_data <- opc_data[opc_data$Gene == g, ]
+  
+  # Aggregate by Gene + Age + Dataset (technically redundant since only 1 cell type per dataset)
+  agg_rank <- aggregate(avg_rank ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  agg_pct  <- aggregate(percent_expressing ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  
+  agg_df <- merge(agg_rank, agg_pct, by = c("Gene", "Age", "Dataset"))
+  
+  # Plot
+  p <- ggplot(agg_df, aes(x = Age, y = avg_rank, color = Dataset, size = percent_expressing)) +
+    geom_point(alpha = 0.9) +
+    geom_line(aes(group = Dataset), linewidth = 1) +
+    scale_y_continuous(limits = c(0, 1)) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, 100), range = c(1, 6)) +
+    labs(
+      title = paste("Avg OPC Expression Rank -", g),
+      x = "Developmental Age",
+      y = "Scaled Avg Rank (0–1)",
+      color = "Dataset"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    )
+
+  # Save to output_dir
+  ggsave(
+    filename = file.path(output_dir, paste0("rank_plot_OPC_", g, ".pdf")),
+    plot = p,
+    width = 10,
+    height = 6
+  )
+}
+
+
+#### 3. non-neuronal ####
+
+# Get all cell types present in datasets
+all_b_types <- unique(b@meta.data$Cell_type_raw)
+all_v_types <- unique(v@meta.data$Lineage)
+
+# Define non-neuronal types (all except neuronal)
+non_neuronal_b <- setdiff(all_b_types, neuronal_types_b)
+non_neuronal_v <- setdiff(all_v_types, neuronal_types_v)
+
+nonneuronal_b <- process_rank_and_percent(
+  rank_mat = rank_mat_b,
+  expr_mat = expr_mat_b,
+  seurat_obj = b,
+  age_col = "Developmental_week",
+  cell_col = "Cell_type_raw",
+  cell_types = non_neuronal_b,
+  dataset_label = "Braun"
+)
+
+# Process Velmeshev non-neuronal
+nonneuronal_v <- process_rank_and_percent(
+  rank_mat = rank_mat_v,
+  expr_mat = expr_mat_v,
+  seurat_obj = v,
+  age_col = "Age_Range",
+  cell_col = "Lineage",
+  cell_types = non_neuronal_v,
+  dataset_label = "Velmeshev"
+)
+
+# Combine datasets
+nonneuronal_data <- rbind(nonneuronal_b, nonneuronal_v)
+
+# Ensure Age is an ordered factor (reuse age_levels vector)
+nonneuronal_data$Age <- factor(nonneuronal_data$Age, levels = age_levels, ordered = TRUE)
+
+# --- Plotting loop for non-neuronal ---
+for (g in genes_of_interest) {
+  gene_data <- nonneuronal_data[nonneuronal_data$Gene == g, ]
+  
+  # Aggregate by Gene + Age + Dataset
+  agg_rank <- aggregate(avg_rank ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  agg_pct <- aggregate(percent_expressing ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  
+  agg_df <- merge(agg_rank, agg_pct, by = c("Gene", "Age", "Dataset"))
+  
+  # Plot
+  p <- ggplot(agg_df, aes(x = Age, y = avg_rank, color = Dataset, size = percent_expressing)) +
+    geom_point(alpha = 0.9) +
+    geom_line(aes(group = Dataset), linewidth = 1) +
+    scale_y_continuous(limits = c(0, 1)) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, 100), range = c(1, 6)) +
+    labs(
+      title = paste("Avg Non-Neuronal Expression Rank -", g),
+      x = "Developmental Age",
+      y = "Scaled Avg Rank (0–1)",
+      color = "Dataset"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    )
+  
+  # Save plot
+  ggsave(
+    filename = file.path(output_dir, paste0("rank_plot_nonneuronal_", g, ".pdf")),
     plot = p,
     width = 10,
     height = 6
