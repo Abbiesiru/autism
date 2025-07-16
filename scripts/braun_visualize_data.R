@@ -26,7 +26,7 @@ library(tibble)
 library(grid)
 library(readxl)
 
-#### 0. preprocessing 
+# #### 0. preprocessing 
 # seurat_obj_path <- file.path(base_dir, "seurat_obj_merged_layers_only.rds")
 # seurat_obj <- readRDS(seurat_obj_path)
 # 
@@ -42,7 +42,7 @@ library(readxl)
 # 
 # # make dim reduction obj
 # tsne_coords <- as.matrix(seurat_obj@meta.data[, c("tSNE_x", "tSNE_y")])
-# colnames(tsne_coords) <- c("tSNE_1", "tSNE_2")  
+# colnames(tsne_coords) <- c("tSNE_1", "tSNE_2")
 # 
 # tsne_reduction <- CreateDimReducObject(
 #   embeddings = tsne_coords,
@@ -57,10 +57,11 @@ library(readxl)
 # age_levels <- c("5", "5.5", "6", "6.6", "6.7", "6.9", "7", "7.5", "8", "8.1", "8.5", "9.2", "9.5", "10", "11.5", "12", "13", "14")
 # seurat_obj$Developmental_week <- factor(seurat_obj$Developmental_week, levels = age_levels)
 # 
-#
+# 
 #  # add subclass labels for cluster annotations
 # 
 # cluster_anno <- read.csv(file.path(base_dir, "table_S2.csv"), header = TRUE)
+# preac_clusters <- cluster_anno$PoolCleanOrder[grepl("PREAC", cluster_anno$AutoAnnotation)]
 # meta <- seurat_obj@meta.data
 # 
 # cluster_anno$PoolCleanOrder <- as.character(cluster_anno$PoolCleanOrder)
@@ -68,6 +69,9 @@ library(readxl)
 # cluster_to_subclass <- setNames(cluster_anno$Subclass, cluster_anno$PoolCleanOrder)
 # subclass_vector <- cluster_to_subclass[seurat_obj$Cell_clusters]
 # seurat_obj@meta.data$Subclass <- subclass_vector
+# 
+# seurat_obj$Subclass[seurat_obj$Cell_clusters %in% preac_clusters] <- "PREAC"
+# 
 # 
 # saveRDS(seurat_obj, file.path(base_dir, "seurat_obj_merged_layers_only_processed.rds"))
 
