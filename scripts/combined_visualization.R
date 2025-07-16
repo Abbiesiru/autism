@@ -335,3 +335,70 @@ for (g in genes_of_interest) {
     height = 6
   )
 }
+
+#### 4. Pre-astrocytes & astrocytes ####
+
+# Pre-astrocytes for Braun: Subclass == "PREAC"
+ast_b <- process_rank_and_percent(
+  rank_mat = rank_mat_b,
+  expr_mat = expr_mat_b,
+  seurat_obj = b,
+  age_col = "Developmental_week",
+  cell_col = "Subclass",
+  cell_types = "PREAC",
+  dataset_label = "Braun"
+)
+
+# Astrocytes for Velmeshev: Lineage == "AST"
+ast_v <- process_rank_and_percent(
+  rank_mat = rank_mat_v,
+  expr_mat = expr_mat_v,
+  seurat_obj = v,
+  age_col = "Age_Range",
+  cell_col = "Lineage",
+  cell_types = "AST",
+  dataset_label = "Velmeshev"
+)
+
+# Combine Braun + Velmeshev OPC summaries
+ast_data <- rbind(ast_b, ast_v)
+
+# Ensure Age is ordered factor
+ast_data$Age <- factor(ast_data$Age, levels = age_levels, ordered = TRUE)
+
+# --- Plot loop (same as before) ---
+for (g in genes_of_interest) {
+  gene_data <- ast_data[ast_data$Gene == g, ]
+  
+  # Aggregate by Gene + Age + Dataset (technically redundant since only 1 cell type per dataset)
+  agg_rank <- aggregate(avg_rank ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  agg_pct  <- aggregate(percent_expressing ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  
+  agg_df <- merge(agg_rank, agg_pct, by = c("Gene", "Age", "Dataset"))
+  
+  # Plot
+  p <- ggplot(agg_df, aes(x = Age, y = avg_rank, color = Dataset, size = percent_expressing)) +
+    geom_point(alpha = 0.9) +
+    geom_line(aes(group = Dataset), linewidth = 1) +
+    scale_y_continuous(limits = c(0, 1)) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, 100), range = c(1, 6)) +
+    labs(
+      title = paste("Avg Astrocyte Expression Rank -", g),
+      x = "Developmental Age",
+      y = "Scaled Avg Rank (0–1)",
+      color = "Dataset"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    )
+
+  # Save to output_dir
+  ggsave(
+    filename = file.path(output_dir, paste0("rank_plot_AST_", g, ".pdf")),
+    plot = p,
+    width = 10,
+    height = 6
+  )
+}
