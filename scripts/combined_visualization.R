@@ -29,6 +29,12 @@ rank_mat_v <- readRDS(file.path(base_dir, "/velmeshev/cell_rankings_velmeshev.rd
 expr_mat_b <- GetAssayData(b, assay = "merged", slot = "data")
 expr_mat_v <- GetAssayData(v, assay = "RNA", slot = "data")
 
+age_levels <- c(
+  "5", "5.5", "6", "6.6", "6.7", "6.9", "7", "7.5", "8", "8.1", 
+  "8.5", "9.2", "9.5", "10", "11.5", "12", "13", "14",
+  "2nd trimester", "3rd trimester", "0-1 years", "1-2 years",
+  "2-4 years", "4-10 years", "10-20 years", "Adult"
+)
 
 # Helper function to process both rank and percent expressed
 process_rank_and_percent <- function(rank_mat, expr_mat, seurat_obj,
@@ -135,12 +141,6 @@ neuronal_v <- process_rank_and_percent(
 neuronal_data <- combined_rank[combined_rank$Cell_Type %in% c(neuronal_types_b, neuronal_types_v), ]
 
 # Ensure Age is an ordered factor
-age_levels <- c(
-  "5", "5.5", "6", "6.6", "6.7", "6.9", "7", "7.5", "8", "8.1", 
-  "8.5", "9.2", "9.5", "10", "11.5", "12", "13", "14",
-  "2nd trimester", "3rd trimester", "0-1 years", "1-2 years",
-  "2-4 years", "4-10 years", "10-20 years", "Adult"
-)
 neuronal_data$Age <- factor(neuronal_data$Age, levels = age_levels, ordered = TRUE)
 
 # --- Loop for each gene ---
@@ -330,6 +330,73 @@ for (g in genes_of_interest) {
   # Save plot
   ggsave(
     filename = file.path(output_dir, paste0("rank_plot_nonneuronal_", g, ".pdf")),
+    plot = p,
+    width = 10,
+    height = 6
+  )
+}
+
+#### 4. Pre-astrocytes & astrocytes ####
+
+# Pre-astrocytes for Braun: Subclass == "PREAC"
+ast_b <- process_rank_and_percent(
+  rank_mat = rank_mat_b,
+  expr_mat = expr_mat_b,
+  seurat_obj = b,
+  age_col = "Developmental_week",
+  cell_col = "Subclass",
+  cell_types = "PREAC",
+  dataset_label = "Braun"
+)
+
+# Astrocytes for Velmeshev: Lineage == "AST"
+ast_v <- process_rank_and_percent(
+  rank_mat = rank_mat_v,
+  expr_mat = expr_mat_v,
+  seurat_obj = v,
+  age_col = "Age_Range",
+  cell_col = "Lineage",
+  cell_types = "AST",
+  dataset_label = "Velmeshev"
+)
+
+# Combine Braun + Velmeshev astrocyte summaries
+ast_data <- rbind(ast_b, ast_v)
+
+# Ensure Age is ordered factor
+ast_data$Age <- factor(ast_data$Age, levels = age_levels, ordered = TRUE)
+
+# --- Plot loop (same as before) ---
+for (g in genes_of_interest) {
+  gene_data <- ast_data[ast_data$Gene == g, ]
+  
+  # Aggregate by Gene + Age + Dataset (technically redundant since only 1 cell type per dataset)
+  agg_rank <- aggregate(avg_rank ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  agg_pct  <- aggregate(percent_expressing ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  
+  agg_df <- merge(agg_rank, agg_pct, by = c("Gene", "Age", "Dataset"))
+  
+  # Plot
+  p <- ggplot(agg_df, aes(x = Age, y = avg_rank, color = Dataset, size = percent_expressing)) +
+    geom_point(alpha = 0.9) +
+    geom_line(aes(group = Dataset), linewidth = 1) +
+    scale_y_continuous(limits = c(0, 1)) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, 100), range = c(1, 6)) +
+    labs(
+      title = paste("Avg Astrocyte Expression Rank -", g),
+      x = "Developmental Age",
+      y = "Scaled Avg Rank (0–1)",
+      color = "Dataset"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    )
+
+  # Save to output_dir
+  ggsave(
+    filename = file.path(output_dir, paste0("rank_plot_AST_", g, ".pdf")),
     plot = p,
     width = 10,
     height = 6
