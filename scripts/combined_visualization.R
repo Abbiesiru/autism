@@ -29,6 +29,12 @@ rank_mat_v <- readRDS(file.path(base_dir, "/velmeshev/cell_rankings_velmeshev.rd
 expr_mat_b <- GetAssayData(b, assay = "merged", slot = "data")
 expr_mat_v <- GetAssayData(v, assay = "RNA", slot = "data")
 
+age_levels <- c(
+  "5", "5.5", "6", "6.6", "6.7", "6.9", "7", "7.5", "8", "8.1", 
+  "8.5", "9.2", "9.5", "10", "11.5", "12", "13", "14",
+  "2nd trimester", "3rd trimester", "0-1 years", "1-2 years",
+  "2-4 years", "4-10 years", "10-20 years", "Adult"
+)
 
 # Helper function to process both rank and percent expressed
 process_rank_and_percent <- function(rank_mat, expr_mat, seurat_obj,
@@ -135,12 +141,6 @@ neuronal_v <- process_rank_and_percent(
 neuronal_data <- combined_rank[combined_rank$Cell_Type %in% c(neuronal_types_b, neuronal_types_v), ]
 
 # Ensure Age is an ordered factor
-age_levels <- c(
-  "5", "5.5", "6", "6.6", "6.7", "6.9", "7", "7.5", "8", "8.1", 
-  "8.5", "9.2", "9.5", "10", "11.5", "12", "13", "14",
-  "2nd trimester", "3rd trimester", "0-1 years", "1-2 years",
-  "2-4 years", "4-10 years", "10-20 years", "Adult"
-)
 neuronal_data$Age <- factor(neuronal_data$Age, levels = age_levels, ordered = TRUE)
 
 # --- Loop for each gene ---
@@ -360,7 +360,7 @@ ast_v <- process_rank_and_percent(
   dataset_label = "Velmeshev"
 )
 
-# Combine Braun + Velmeshev OPC summaries
+# Combine Braun + Velmeshev astrocyte summaries
 ast_data <- rbind(ast_b, ast_v)
 
 # Ensure Age is ordered factor
