@@ -80,7 +80,7 @@ seurat_obj_path <- file.path(base_dir, "seurat_obj_merged_layers_only_processed.
 seurat_obj <- readRDS(seurat_obj_path)
 
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
-group_vars <- c("Lineage", "Region", "Subclass")
+group_vars <- c("Subclass")
 
 #### 1. Feature Plot ####
 
@@ -298,19 +298,20 @@ for (group_var in group_vars) {
 
 #### 3. Scatter Plot ####
 
-lineages <- c("All", "Erythrocyte", "Fibroblast", "Glioblast", "Immune", 
-              "Neuroblast", "Neuron", "Neuronal IPC", "Oligo", "Radial glia", 
-              "Vascular", "Neural crest", "Placodes")
+# lineages <- c("All", "Erythrocyte", "Fibroblast", "Glioblast", "Immune", 
+#               "Neuroblast", "Neuron", "Neuronal IPC", "Oligo", "Radial glia", 
+#               "Vascular", "Neural crest", "Placodes")
+subclasses <- c("OPC", "PREAC", "Schwann")
 age_levels <- c("5", "5.5", "6", "6.6", "6.7", "6.9", "7", "7.5", "8", "8.1", 
                 "8.5", "9.2", "9.5", "10", "11.5", "12", "13", "14")
 seurat_obj$Developmental_week <- factor(seurat_obj$Developmental_week, levels = age_levels)
 
 # helper function to get summary data
-get_summary_df <- function(seurat_obj, gene, lineage, age_levels) {
-  if (lineage == "All") {
+get_summary_df <- function(seurat_obj, gene, subclass, age_levels) {
+  if (subclass == "All") {
     seurat_sub <- seurat_obj
   } else {
-    cells <- WhichCells(seurat_obj, expression = Cell_type_raw == lineage)
+    cells <- WhichCells(seurat_obj, expression = Subclass == subclass)
     seurat_sub <- subset(seurat_obj, cells = cells)
   }
   
@@ -325,7 +326,7 @@ get_summary_df <- function(seurat_obj, gene, lineage, age_levels) {
       .groups = "drop"
     ) %>%
     complete(Developmental_week = age_levels, fill = list(avg_exprs = 0, percent_exprs = 0)) %>%
-    mutate(Gene = gene, Cell_type_raw = lineage)
+    mutate(Gene = gene, Subclass = subclass)
   
   return(summary_df)
 }
@@ -333,9 +334,9 @@ get_summary_df <- function(seurat_obj, gene, lineage, age_levels) {
 # prepare all summaries
 all_summaries <- list()
 for (gene in genes_of_interest) {
-  for (lineage in lineages) {
-    sum_df <- get_summary_df(seurat_obj, gene, lineage, age_levels)
-    all_summaries[[paste(gene, lineage, sep = "_")]] <- sum_df
+  for (subclass in subclasses) {
+    sum_df <- get_summary_df(seurat_obj, gene, subclass, age_levels)
+    all_summaries[[paste(gene, subclass, sep = "_")]] <- sum_df
   }
 }
 combined_summary <- bind_rows(all_summaries)
@@ -357,8 +358,8 @@ y_max <- ceiling(max(combined_summary$avg_exprs, na.rm = TRUE) * 10) / 10
 max_percent <- ceiling(max(combined_summary$percent_exprs, na.rm = TRUE))
 
 # function to generate & save plot if new
-generate_and_save_age_expr_plot <- function(df, gene, lineage, y_max, max_percent, output_dir) {
-  lineage_clean <- tolower(gsub("[^a-zA-Z0-9]", "", lineage))
+generate_and_save_age_expr_plot <- function(df, gene, subclass, y_max, max_percent, output_dir) {
+  lineage_clean <- tolower(gsub("[^a-zA-Z0-9]", "", subclass))
   gene_clean <- gene  # preserve case
   
   filename <- paste0("age_expr_", gene_clean, "_", lineage_clean, ".pdf")
@@ -369,13 +370,14 @@ generate_and_save_age_expr_plot <- function(df, gene, lineage, y_max, max_percen
   if (!file.exists(filepath)) {
     message("Generating and saving: ", filepath)
     
-    subtitle_text <- ifelse(lineage == "All", "All Cells", paste(lineage, "Cells"))
+    subtitle_text <- ifelse(subclass == "All", "All Cells", paste(subclass, "Cells"))
     
     df <- df %>% mutate(Developmental_week = factor(Developmental_week, levels = age_levels))
     
     p <- ggplot(df, aes(x = Developmental_week, y = avg_exprs, group = 1)) +
-      geom_line(color = "#2c7fb8", linewidth = 1) +
-      geom_point(aes(size = percent_exprs), color = "#2c7fb8") +
+      # geom_line(color = "#2c7fb8", linewidth = 1) +
+      geom_point(aes(size = percent_exprs), color = "#2c7fb8") + 
+      geom_smooth(method = "lm", se = FALSE, color = "#2c7fb8", linewidth = 0.8) + 
       scale_size_continuous(limits = c(0, max_percent), breaks = scales::pretty_breaks(n = 5)) +
       theme_minimal() +
       labs(
@@ -396,12 +398,12 @@ generate_and_save_age_expr_plot <- function(df, gene, lineage, y_max, max_percen
 
 # loop to generate plots
 for (gene in genes_of_interest) {
-  for (lineage in lineages) {
+  for (subclass in subclasses) {
   
     df <- combined_summary %>%
-      filter(Gene == gene, Cell_type_raw == lineage)
+      filter(Gene == gene, Subclass == subclass)
     
-    generate_and_save_age_expr_plot(df, gene, lineage, y_max, max_percent, output_dir)
+    generate_and_save_age_expr_plot(df, gene, subclass, y_max, max_percent, output_dir)
   }
 }
 
