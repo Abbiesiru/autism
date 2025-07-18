@@ -402,3 +402,73 @@ for (g in genes_of_interest) {
     height = 6
   )
 }
+
+#### 5. all cell types ####
+
+# Get all cell types present in datasets
+all_b_types <- unique(b@meta.data$Cell_type_raw)
+all_v_types <- unique(v@meta.data$Lineage)
+
+all_b <- process_rank_and_percent(
+  rank_mat = rank_mat_b,
+  expr_mat = expr_mat_b,
+  seurat_obj = b,
+  age_col = "Developmental_week",
+  cell_col = "Cell_type_raw",
+  cell_types = all_b_types,
+  dataset_label = "Braun"
+)
+
+# Process Velmeshev non-neuronal
+all_v <- process_rank_and_percent(
+  rank_mat = rank_mat_v,
+  expr_mat = expr_mat_v,
+  seurat_obj = v,
+  age_col = "Age_Range",
+  cell_col = "Lineage",
+  cell_types = all_v_types,
+  dataset_label = "Velmeshev"
+)
+
+# Combine datasets
+all_data <- rbind(all_b, all_v)
+
+# Ensure Age is an ordered factor (reuse age_levels vector)
+all_data$Age <- factor(all_data$Age, levels = age_levels, ordered = TRUE)
+
+# --- Plotting loop for non-neuronal ---
+for (g in genes_of_interest) {
+  gene_data <- all_data[all_data$Gene == g, ]
+  
+  # Aggregate by Gene + Age + Dataset
+  agg_rank <- aggregate(avg_rank ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  agg_pct <- aggregate(percent_expressing ~ Gene + Age + Dataset, data = gene_data, FUN = mean, na.rm = TRUE)
+  
+  agg_df <- merge(agg_rank, agg_pct, by = c("Gene", "Age", "Dataset"))
+  
+  # Plot
+  p <- ggplot(agg_df, aes(x = Age, y = avg_rank, color = Dataset, size = percent_expressing)) +
+    geom_point(alpha = 0.9) +
+    geom_line(aes(group = Dataset), linewidth = 1) +
+    scale_y_continuous(limits = c(0, 1)) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, 100), range = c(1, 6)) +
+    labs(
+      title = paste("Avg All Cell Expression Rank -", g),
+      x = "Developmental Age",
+      y = "Scaled Avg Rank (0–1)",
+      color = "Dataset"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    )
+  
+  # Save plot
+  ggsave(
+    filename = file.path(output_dir, paste0("rank_plot_all_", g, ".pdf")),
+    plot = p,
+    width = 10,
+    height = 6
+  )
+}
