@@ -472,3 +472,42 @@ for (g in genes_of_interest) {
     height = 6
   )
 }
+
+#### check for batch effects ####
+
+# Check that the rownames match
+all(rownames(rank_mat_b) == rownames(rank_mat_v))  # should return TRUE
+
+# Combine them column-wise
+combined_rank_matrix <- cbind(rank_mat_b, rank_mat_v)
+
+  # Extract metadata from each Seurat object
+meta_b <- b@meta.data
+meta_v <- v@meta.data
+
+# Add unique cell names if needed (to avoid duplicate column names)
+colnames(rank_mat_b) <- paste0("cellb_", colnames(rank_mat_b))
+colnames(rank_mat_v) <- paste0("cellv_", colnames(rank_mat_v))
+rownames(meta_b) <- colnames(rank_mat_b)
+rownames(meta_v) <- colnames(rank_mat_v)
+
+# Combine metadata
+meta_combined <- bind_rows(meta_b, meta_v)
+
+# Create combined metadata columns
+meta_combined$Developmental_Age <- paste(meta_combined$Developmental_week, meta_combined$Age_Range, sep = "_")
+meta_combined$Cell_Type <- paste(meta_combined$Subclass, meta_combined$Lineage, sep = "_")
+meta_combined$Region <- paste(meta_combined$Subdivision, meta_combined$Region_Broad, sep = "_")
+
+# Create dummy count matrix (zeroes), same dimensions as your rank matrix
+tmp <- matrix(0, nrow = nrow(combined_rank_matrix), ncol = ncol(combined_rank_matrix))
+rownames(tmp) <- rownames(combined_rank_matrix)
+colnames(tmp) <- colnames(combined_rank_matrix)
+
+# Create Seurat object
+seurat_combined <- CreateSeuratObject(counts = tmp, meta.data = meta_combined)
+
+# Add the ranked data to the data slot (NOT counts)
+seurat_combined <- SetAssayData(seurat_combined, assay = "RNA", slot = "data", new.data = combined_rank_matrix)
+
+
