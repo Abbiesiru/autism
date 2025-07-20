@@ -510,4 +510,15 @@ seurat_combined <- CreateSeuratObject(counts = tmp, meta.data = meta_combined)
 # Add the ranked data to the data slot (NOT counts)
 seurat_combined <- SetAssayData(seurat_combined, assay = "RNA", slot = "data", new.data = combined_rank_matrix)
 
+### generate UMAP ###
+seurat_combined <- ScaleData(seurat_combined, verbose = FALSE)
+seurat_combined <- RunPCA(seurat_combined, features = rownames(seurat_combined))
+
+seurat_combined <- RunUMAP(seurat_combined, dims = 1:20)
+umap_plot <- DimPlot(seurat_combined, reduction = "umap", group.by = "Developmental_Age")
+ggsave("umap_plot_by_dataset.pdf", umap_plot, width = 6, height = 5)                          
+
+saveRDS(seurat_combined, file = "seurat_combined_with_umap.rds")
+
+                          
 
