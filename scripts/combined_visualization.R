@@ -492,6 +492,8 @@ rownames(meta_b) <- colnames(rank_mat_b)
 rownames(meta_v) <- colnames(rank_mat_v)
 
 # Combine metadata
+meta_b$Dataset <- "b"
+meta_v$Dataset <- "v"
 meta_combined <- bind_rows(meta_b, meta_v)
 
 # Create combined metadata columns
