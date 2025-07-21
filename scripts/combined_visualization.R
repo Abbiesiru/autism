@@ -519,6 +519,7 @@ umap_plot <- DimPlot(seurat_combined, reduction = "umap", group.by = "Developmen
 ggsave("umap_plot_by_dataset.pdf", umap_plot, width = 6, height = 5)                          
 
 saveRDS(seurat_combined, file = "seurat_combined_with_umap.rds")
-
+seurat_obj <- readRDS("seurat_combined_with_umap.rds")
+                          
                           
 
