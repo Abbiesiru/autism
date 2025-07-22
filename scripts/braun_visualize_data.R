@@ -81,6 +81,22 @@ seurat_obj <- readRDS(seurat_obj_path)
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
 group_vars <- c("Subclass")
 
+seurat_obj$Subclass <- recode(
+  seurat_obj$Subclass,
+  "VSMC" = "Vascular smooth muscle cells",
+  "Schwann" = "Schwann cells",
+  "OPC" = "Oligodendrocyte precursors",
+  "Neuronal IPC" = "Neuronal intermediate progenitors",
+  "Neuron" = "Neurons",
+  "Neuroblast" = "Neuroblasts",
+  "Immune" = "Immune cells",
+  "Glioblast" = "Glioblasts",
+  "Fibroblast" = "Fibroblasts",
+  "Erythrocyte" = "Erythrocytes",
+  "Endothelial" = "Endothelial cells",
+  "COPs (premyelinating)" = "Committed oligodendrocyte progenitors (premyelinating)"
+)
+
 #### 0. UMAP ####
 
 p <- DimPlot(
