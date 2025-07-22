@@ -15,8 +15,8 @@ if (!dir.exists(output_dir)) {
 library(Seurat)
 
 #### 1.  Load and merge ranked matrices ####
-rank_braun <- readRDS(file.path(base_dir, "braun/cell_rankings_braun.rds")
-rank_velmeshev <- readRDS(file.path(base_dir, "velmeshev/cell_rankings_velmeshev.rds")
+rank_braun <- readRDS(file.path(base_dir, "braun/cell_rankings_braun.rds"))
+rank_velmeshev <- readRDS(file.path(base_dir, "velmeshev/cell_rankings_velmeshev.rds"))
 
 colnames(rank_braun) <- paste0("braun_", colnames(rank_braun))
 colnames(rank_velmeshev) <- paste0(velm_", colnames(rank_velmeshev))
