@@ -18,7 +18,11 @@ library(data.table)
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 
-# Define genes and Lineage cell types
+# Define genes
+
+
+#### CELL TYPE ####
+#Lineage cell types
 genes <- c("SORCS1", "SORCS2", "SORCS3")
 cell_types <- setdiff(unique(seurat_obj$Lineage), "OUT")  # excludes 'OUT'
 
@@ -92,5 +96,63 @@ results_df[, AdjustedP := pmin(RawP * .N, 1)]
 results_df[, Significant := AdjustedP < 0.05]
 
 # Save or view
-fwrite(results_df, file.path(base_dir, "optimized_chisq_results.csv"))
+fwrite(results_df, file.path(base_dir, "optimized_chisq_results_lineage.csv"))
+print(results_df[Significant == TRUE])
+
+#### BRAIN REGION ####
+brain_regions <- unique(seurat_obj$Region_Broad)
+regions <- seurat_obj$Region_Broad
+
+# Melt to long format
+df_long <- melt(df, id.vars = c("Cell", "Region"),
+                variable.name = "Gene", value.name = "Expression")
+
+# Binary expression status
+df_long[, Expressed := as.integer(Expression > 0)]
+df_long[, Expression := NULL]
+
+# Initialize result list
+results <- list()
+
+# Loop through genes and brain regions
+for (gene in genes) {
+  for (region in brain_regions) {
+    
+    subset_dt <- df_long[Gene == gene]
+    
+    # Logical groups
+    in_region <- subset_dt$Region == region
+    out_region <- !in_region
+    
+    expressed <- subset_dt$Expressed == 1
+    not_expressed <- !expressed
+    
+    # Counts for 2x2 table
+    a <- sum(expressed & in_region)
+    b <- sum(not_expressed & in_region)
+    c <- sum(expressed & out_region)
+    d <- sum(not_expressed & out_region)
+    
+    contingency <- matrix(c(a, b, c, d), nrow = 2, byrow = TRUE)
+    
+    expected <- sum(contingency[1,]) * sum(contingency[,1]) / sum(contingency)
+    
+    raw_p <- if (a < expected) 1 else chisq.test(contingency)$p.value
+    
+    results[[length(results) + 1]] <- list(
+      Gene = gene,
+      Region = region,
+      A = a, B = b, C = c, D = d,
+      RawP = raw_p
+    )
+  }
+}
+
+# Combine and adjust p-values
+results_df <- rbindlist(results)
+results_df[, AdjustedP := pmin(RawP * .N, 1)]
+results_df[, Significant := AdjustedP < 0.05]
+
+# Save and view
+fwrite(results_df, "optimized_chisq_results_region.csv")
 print(results_df[Significant == TRUE])
