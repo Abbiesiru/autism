@@ -26,7 +26,7 @@ library(tibble)
 library(grid)
 library(readxl)
 
-# #### 0. preprocessing 
+# #### PREPROCESSING ####
 # seurat_obj_path <- file.path(base_dir, "seurat_obj_merged_layers_only.rds")
 # seurat_obj <- readRDS(seurat_obj_path)
 # 
@@ -75,12 +75,23 @@ library(readxl)
 # 
 # saveRDS(seurat_obj, file.path(base_dir, "seurat_obj_merged_layers_only_processed.rds"))
 
-
 seurat_obj_path <- file.path(base_dir, "seurat_obj_merged_layers_only_processed.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
 group_vars <- c("Subclass")
+
+#### 0. UMAP ####
+
+p <- DimPlot(
+  seurat_obj,
+  reduction = "tsne",
+  group.by = "Subclass",     # color by cell type
+  label = TRUE,               # add labels to clusters
+  pt.size = 1.5,              # control point size
+) + ggtitle("tSNE - Cell Type")
+
+ggsave(file.path(output_dir, "tsne_plot.png"), p, width = 8, height = 6)
 
 #### 1. Feature Plot ####
 

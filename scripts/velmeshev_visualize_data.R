@@ -26,14 +26,60 @@ library(tibble)
 library(grid)
 library(readxl)
 
+
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
 group_vars <- c("Lineage", "Region")
 
+#### 0. UMAP ####
+seurat_obj$Lineage <- recode(
+  seurat_obj$Lineage,
+  "AST" = "Astrocytes",
+  "ExNeu" = "Excitatory neurons",
+  "GLIALPROG" = "Glial progenitors",
+  "IN" = "Inhibitory neurons",
+  "MG" = "Microglia",
+  "OL" = "Oligodendrocytes",
+  "OPC" = "Oligodendrocyte precursors",
+  "OUT" = "Outliers",
+  "VASC" = "Vascular"
+)
+
+seurat_obj$Region_Broad <- recode(
+  seurat_obj$Region_Broad,
+  "CC" = "Cingulate cortex",
+  "CGE" = "Caudal ganglionic eminence",
+  "CTX" = "Cortex",
+  "FC" = "Frontal/prefrontal cortex",
+  "GE" = "Ganglionic eminence",
+  "IC" = "Insular cortex",
+  "LGE" = "Lateral ganglionic eminence",
+  "MC" = "Motor cortex",
+  "MGE" = "medial ganglionic eminence",
+  "TC" = "Temporal cortex"
+)
+
+
+p <- DimPlot(
+  seurat_obj,
+  reduction = "umap",
+  group.by = "Age_Range",     # color by cell type
+  label = TRUE,               # add labels to clusters
+  label.size = 3,
+  pt.size = 1.5,              # control point size
+) + ggtitle("UMAP - Developmental Age")
+
+ggsave(file.path(output_dir, "umap_plot_age.png"), p, width = 8, height = 6)
+
 #### 1. Feature Plot ####
 
 ### 1a. create feature plot with annotations ###
+age_order <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", "4-10 years", "10-20 years", "Adult")
+
+# Set Age_Range as factor with correct order
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_order)
+
 generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE) {
   # Calculate centroids
   umap_df <- data.frame(
@@ -41,14 +87,15 @@ generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE)
     y = seurat_obj@reductions$umap@cell.embeddings[, 2],
     Group = seurat_obj[[group_var]][, 1]
   )
-  
+
   centroids <- umap_df %>%
     group_by(Group) %>%
     summarize(x = mean(x), y = mean(y), .groups = "drop")
   
+  
   # If splitting by age
   if (split_by_age) {
-    age_levels <- unique(seurat_obj$Age_Range)
+    age_levels <- levels(seurat_obj$Age_Range)
     
     plots <- lapply(age_levels, function(age) {
       subset_obj <- subset(seurat_obj, subset = Age_Range == age)
@@ -73,7 +120,7 @@ generate_umap_plot <- function(seurat_obj, group_var, gene, split_by_age = TRUE)
       geom_text(
         data = centroids,
         aes(x = x, y = y, label = Group),
-        size = 3,
+        size = 8,
         color = "black",
         inherit.aes = FALSE
       ) +
@@ -104,8 +151,8 @@ generate_and_save_if_new <- function(seurat_obj, group_var, gene, split_by_age, 
 
 ### generate 12 plots: 3 genes x 2 annotations, split/unsplit ###
 
-group_vars <- c("Lineage", "Region_Broad")
-split_options <- c(TRUE, FALSE)
+group_vars <- c("Lineage")
+split_options <- c(FALSE)
 
 for (group_var in group_vars) {
   for (gene in genes_of_interest) {
