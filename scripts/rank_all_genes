@@ -1,0 +1,122 @@
+base_dir <- switch(Sys.info()[["nodename"]],
+                   "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat",
+                   "gauss" = "/home/abbiew/single_cell",
+                   "."
+)
+
+output_folder <- "plots"
+output_dir <- file.path(base_dir, output_folder)
+
+# Create folder if it doesn't exist
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+library(Seurat)
+library(matrixStats)
+
+#### 1. Subsample shared cells across braun & velmeshev ####
+# Load Braun (multiple files)
+braun_paths <- list.files(file.path(base_dir, "/braun/5_Saved_seurat_obj"), pattern = "*.rds", full.names = TRUE)
+# Load Velmeshev (single object)
+velm_path <- file.path(base_dir, "velmeshev/seurat_obj.rds")
+
+# Helper to extract metadata w/ dataset prefix
+get_metadata <- function(path, prefix) {
+  obj <- readRDS(path)
+  meta <- obj@meta.data
+  rownames(meta) <- paste0(prefix, "_", rownames(meta))
+  return(meta)
+}
+
+# Combine metadata across all objects
+braun_meta <- do.call(rbind, lapply(braun_paths, get_metadata, prefix = "braun"))
+velm_meta  <- get_metadata(velm_path, prefix = "velm")
+
+# Combine all metadata and subsample 10%
+cluster_anno <- read.csv(file.path(base_dir, "/braun/table_S2.csv"), header = TRUE)
+preac_clusters <- cluster_anno$PoolCleanOrder[grepl("PREAC", cluster_anno$AutoAnnotation)]
+cluster_anno$PoolCleanOrder <- as.character(cluster_anno$PoolCleanOrder)
+braun_meta$Cell_clusters <- as.character(braun_meta$Cell_clusters)
+cluster_to_subclass <- setNames(cluster_anno$Subclass, cluster_anno$PoolCleanOrder)
+subclass_vector <- cluster_to_subclass[braun_meta$Cell_clusters]
+braun_meta$Subclass <- subclass_vector
+braun_meta$Subclass[braun_meta$Cell_clusters %in% preac_clusters] <- "PREAC"
+
+
+braun_meta$dataset <- "braun"
+velm_meta$dataset <- "velmeshev"
+braun_meta <- braun_meta[, c("Subclass", "Subdivision", "Developmental_week")]
+colnames(braun_meta) <- c("Cell_Type", "Region", "Developmental_Age")
+velm_meta <- velm_meta[, c("Lineage", "Region_Broad", "Age_Range")]
+colnames(velm_meta) <- c("Cell_Type", "Region", "Developmental_Age")
+combined_meta <- rbind(braun_meta, velm_meta)
+set.seed(42)
+subsampled_cells <- sample(rownames(combined_meta), size = ceiling(0.10 * nrow(combined_meta)))
+
+# Save subsampled cell names & metadata
+saveRDS(subsampled_cells, file.path(base_dir, "shared_subsampled_cells.rds"))
+saveRDS(combined_meta, file.path(base_dir, "combined_meta.rds"))
+
+#### 2.  Define ranking function ####
+rank_genes_subsampled <- function(seurat_obj, gene_pool, subsample_cells, prefix) {
+  # Subset to only the common genes (ensures correct rows)
+  seurat_obj <- subset(seurat_obj, features = gene_pool)
+  colnames(seurat_obj) <- paste0(prefix, "_", colnames(seurat_obj))
+
+  # Only keep subsampled cells that are present in this object
+  shared_cells <- intersect(colnames(seurat_obj), subsample_cells)
+  if (length(shared_cells) == 0) return(NULL)
+
+  seurat_obj <- subset(seurat_obj, cells = shared_cells)
+
+  # Extract expression (force dense matrix to avoid sparse coercion surprises)
+  expr_mat <- as.matrix(GetAssayData(seurat_obj, assay = "RNA", layer = "counts"))
+
+  # Ensure all genes are present and ordered the same way (fill in missing genes with zeros)
+  missing_genes <- setdiff(gene_pool, rownames(expr_mat))
+  if (length(missing_genes) > 0) {
+    filler <- matrix(0, nrow = length(missing_genes), ncol = ncol(expr_mat),
+                     dimnames = list(missing_genes, colnames(expr_mat)))
+    expr_mat <- rbind(expr_mat, filler)
+  }
+
+  # Reorder the rows to match gene_pool exactly
+  expr_mat <- expr_mat[gene_pool, , drop = FALSE]
+
+  # Rank each cell (column-wise)
+  ranked_expr <- apply(expr_mat, 2, function(x) rank(-x, ties.method = "max"))
+
+  return(ranked_expr)
+}
+
+
+#### 3. Apply ranking to braun (multiple objects) ####
+common_genes <- readRDS(file.path(base_dir, "common_genes.rds"))
+subsampled_cells <- readRDS(file.path(base_dir, "shared_subsampled_cells.rds"))
+
+braun_ranks <- list()
+for (path in braun_paths) {
+  obj <- readRDS(path)
+  ranks <- rank_genes_subsampled(obj, common_genes, subsampled_cells, prefix = "braun")
+  if (!is.null(ranks)) {
+    braun_ranks[[basename(path)]] <- ranks
+  }
+}
+braun_merged <- do.call(cbind, braun_ranks)
+
+#### 4. Apply ranking to velmeshev ####
+velm_obj <- readRDS(velm_path)
+velm_ranks <- rank_genes_subsampled(velm_obj, common_genes, subsampled_cells, prefix = "velm")
+
+#### 5. Merge and normalize all rankings ####
+# Merge braun and velmeshev ranked matrices
+merged_ranks <- cbind(braun_merged, velm_ranks)
+
+# Normalize to [0, 1]
+merged_ranks <- 1 - (merged_ranks / length(common_genes))
+
+# Save
+saveRDS(merged_ranks, file.path(base_dir, "merged_ranked_matrix_subsampled.rds"))
+
+
