@@ -43,33 +43,39 @@ df_long[, Expression := NULL]  # drop raw expression to save memory
 results <- list()
 
 # Loop through each gene and cell type
+# Loop through each gene and cell type
 for (gene in genes) {
   for (ct in cell_types) {
-    
+
     subset_dt <- df_long[Gene == gene]
-    
+
     # Logical masks
     in_type <- subset_dt$Lineage == ct
     out_type <- !in_type
-    
+
     expressed <- subset_dt$Expressed == 1
-    not_expressed <- !expressed
-    
-    # a = expressed & in cell type
-    # b = not expressed & in cell type
-    # c = expressed & not in cell type
-    # d = not expressed & not in cell type
-    a <- sum(expressed & in_type)
-    b <- sum(not_expressed & in_type)
-    c <- sum(expressed & out_type)
-    d <- sum(not_expressed & out_type)
-    
+
+    # Use numeric to avoid integer overflow
+    a <- as.numeric(sum(expressed & in_type))
+    b <- as.numeric(sum(!expressed & in_type))
+    c <- as.numeric(sum(expressed & out_type))
+    d <- as.numeric(sum(!expressed & out_type))
+
     contingency <- matrix(c(a, b, c, d), nrow = 2, byrow = TRUE)
-    
-    expected <- sum(contingency[1,]) * sum(contingency[,1]) / sum(contingency)
-    
-    raw_p <- if (a < expected) 1 else chisq.test(contingency)$p.value
-    
+
+    # Safeguards: skip invalid tables
+    if (any(rowSums(contingency) == 0) || any(colSums(contingency) == 0)) {
+      raw_p <- NA
+    } else {
+      expected <- sum(contingency[1,]) * sum(contingency[,1]) / sum(contingency)
+
+      raw_p <- tryCatch({
+        if (a < expected) 1 else chisq.test(contingency)$p.value
+      }, error = function(e) {
+        NA
+      })
+    }
+
     results[[length(results) + 1]] <- list(
       Gene = gene,
       CellType = ct,
@@ -78,6 +84,7 @@ for (gene in genes) {
     )
   }
 }
+
 
 # Combine and adjust p-values
 results_df <- rbindlist(results)
