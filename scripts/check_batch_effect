@@ -40,6 +40,7 @@ rank_top <- rank_sub[top_genes, ]
 
 seurat_rank <- CreateSeuratObject(counts = rank_top)
 seurat_rank <- AddMetaData(seurat_rank, metadata = meta_sub)
+seurat_rank$dataset <- ifelse(grepl("^braun_", colnames(seurat_rank)), "Braun", "Velmeshev")
 
 rank_assay <- CreateAssayObject(counts = rank_top)
 rank_assay@scale.data <- rank_top
