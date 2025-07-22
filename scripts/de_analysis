@@ -93,3 +93,28 @@ summary_df <- do.call(rbind, summary_list)
 # Save result
 write.csv(summary_df, file.path(base_dir, "age_DE_summary.csv"), row.names = FALSE)
 
+
+#### Violin plot ####
+for (gene in names(gene_celltype_map)) {
+  cell_type <- gene_celltype_map[[gene]]
+  
+  # Subset object to relevant cell type
+  subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
+  
+  # Ensure Age_Range is a factor in the right order
+  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_order)
+  
+  # Plot
+  p <- VlnPlot(
+    subset_obj,
+    features = gene,
+    group.by = "Age_Range",
+    pt.size = 0.1
+  ) + ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Save
+  pdf_path <- file.path(output_dir, paste0("violin_", gene, "_", cell_type, ".pdf"))
+  ggsave(pdf_path, plot = p, width = 8, height = 5)
+}
+
