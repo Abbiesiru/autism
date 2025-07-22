@@ -61,7 +61,7 @@ for (gene in names(gene_celltype_map)) {
         ident.1 = ident.1,
         ident.2 = ident.2,
         features = gene,
-        test.use = "t",
+        test.use = "wilcox",
         logfc.threshold = 0,
         verbose = FALSE
       )
