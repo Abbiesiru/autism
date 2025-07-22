@@ -36,6 +36,8 @@ all_ages <- unique(gsub(".*_", "", all_groups))
 age_order <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", 
                "4-10 years", "10-20 years", "Adult")
 
+
+#### 1. DE analysis ####
 # Create output list to store results
 de_results <- list()
 
@@ -61,7 +63,7 @@ for (gene in names(gene_celltype_map)) {
         ident.1 = ident.1,
         ident.2 = ident.2,
         features = gene,
-        test.use = "t",
+        test.use = "wilcox",
         logfc.threshold = 0,
         verbose = FALSE
       )
@@ -92,4 +94,29 @@ summary_df <- do.call(rbind, summary_list)
 
 # Save result
 write.csv(summary_df, file.path(base_dir, "age_DE_summary.csv"), row.names = FALSE)
+
+
+#### 2. Violin plot ####
+for (gene in names(gene_celltype_map)) {
+  cell_type <- gene_celltype_map[[gene]]
+  
+  # Subset object to relevant cell type
+  subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
+  
+  # Ensure Age_Range is a factor in the right order
+  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_order)
+  
+  # Plot
+  p <- VlnPlot(
+    subset_obj,
+    features = gene,
+    group.by = "Age_Range",
+    pt.size = 0.1
+  ) + ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Save
+  pdf_path <- file.path(output_dir, paste0("violin_", gene, "_", cell_type, ".pdf"))
+  ggsave(pdf_path, plot = p, width = 8, height = 5)
+}
 
