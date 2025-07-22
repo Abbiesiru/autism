@@ -50,12 +50,13 @@ DefaultAssay(seurat_rank) <- "rank"
 # Run PCA directly on the rank assay without NormalizeData or ScaleData
 seurat_rank <- RunPCA(seurat_rank, features = top_genes, verbose = TRUE, assay = "rank")
 seurat_rank <- RunUMAP(seurat_rank, dims = 1:30, verbose = TRUE)
+saveRDS(seurat_rank, file.path(base_dir, "seurat_combined_with_umap.rds"))
 
 #### 4. Visualize vatch effect (color by dataset) ####
 
 p <- DimPlot(seurat_rank, reduction = "pca", dims = c(1, 2))
 ggsave(file.path(output_dir, "combined_pca.pdf"), p, width = 6, height = 5)       
 p <- DimPlot(seurat_rank, group.by = "Cell_Type", label = TRUE, repel = TRUE) + ggtitle("Cell Type")
-ggsave(file.path(output_dir, "combined_umap_cell_type.pdf"), p, width = 6, height = 5)       
+ggsave(file.path(output_dir, "combined_umap_cell_type.pdf"), p, width = 12, height = 5)       
 p <- DimPlot(seurat_rank, group.by = "dataset") + ggtitle("Dataset")
 ggsave(file.path(base_dir, "combined_umap_dataset.pdf"), p, width = 6, height = 5)       
