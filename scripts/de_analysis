@@ -36,6 +36,8 @@ all_ages <- unique(gsub(".*_", "", all_groups))
 age_order <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", 
                "4-10 years", "10-20 years", "Adult")
 
+
+#### 1. DE analysis ####
 # Create output list to store results
 de_results <- list()
 
@@ -94,7 +96,7 @@ summary_df <- do.call(rbind, summary_list)
 write.csv(summary_df, file.path(base_dir, "age_DE_summary.csv"), row.names = FALSE)
 
 
-#### Violin plot ####
+#### 2. Violin plot ####
 for (gene in names(gene_celltype_map)) {
   cell_type <- gene_celltype_map[[gene]]
   
