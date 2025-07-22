@@ -30,7 +30,7 @@ library(readxl)
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
-group_vars <- c("Lineage", "Region")
+group_vars <- c("Lineage")
 
 #### 0. UMAP ####
 seurat_obj$Lineage <- recode(
