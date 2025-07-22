@@ -3,7 +3,16 @@ base_dir <- switch(Sys.info()[["nodename"]],
                    "gauss" = "/home/abbiew/single_cell",
                    ".")
 
+output_folder <- "plots"
+output_dir <- file.path(base_dir, output_folder)
+
+# Create folder if it doesn't exist
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
 library(Seurat)
+library(ggplot2)
 library(matrixStats)
 
 #### 1. Load precomputed subsampled ranked matrix and metadata ####
@@ -32,12 +41,20 @@ rank_top <- rank_sub[top_genes, ]
 seurat_rank <- CreateSeuratObject(counts = rank_top)
 seurat_rank <- AddMetaData(seurat_rank, metadata = meta_sub)
 
-# Skip normalization since data is already rank-normalized
-seurat_rank <- ScaleData(seurat_rank, features = top_genes, verbose = FALSE)
-seurat_rank <- RunPCA(seurat_rank, features = top_genes, verbose = FALSE)
-seurat_rank <- RunUMAP(seurat_rank, dims = 1:30, verbose = FALSE)
+rank_assay <- CreateAssayObject(counts = rank_top)
+rank_assay@scale.data <- rank_top
+seurat_rank[["rank"]] <- rank_assay
+DefaultAssay(seurat_rank) <- "rank"
+
+# Run PCA directly on the rank assay without NormalizeData or ScaleData
+seurat_rank <- RunPCA(seurat_rank, features = top_genes, verbose = TRUE, assay = "rank")
+seurat_rank <- RunUMAP(seurat_rank, dims = 1:30, verbose = TRUE)
 
 #### 4. Visualize vatch effect (color by dataset) ####
 
-DimPlot(seurat_rank, group.by = "Cell_Type", label = TRUE, repel = TRUE) + ggtitle("Cell Type")
-DimPlot(seurat_rank, group.by = "dataset") + ggtitle("Dataset")
+p <- DimPlot(seurat_rank, reduction = "pca", dims = c(1, 2))
+ggsave(file.path(output_dir, "combined_pca.pdf"), p, width = 6, height = 5)       
+p <- DimPlot(seurat_rank, group.by = "Cell_Type", label = TRUE, repel = TRUE) + ggtitle("Cell Type")
+ggsave(file.path(output_dir, "combined_umap_cell_type.pdf"), p, width = 6, height = 5)       
+p <- DimPlot(seurat_rank, group.by = "dataset") + ggtitle("Dataset")
+ggsave(file.path(base_dir, "combined_umap_dataset.pdf"), p, width = 6, height = 5)       
