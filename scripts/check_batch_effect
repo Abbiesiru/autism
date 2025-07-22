@@ -1,75 +1,43 @@
 base_dir <- switch(Sys.info()[["nodename"]],
                    "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat",
                    "gauss" = "/home/abbiew/single_cell",
-                   "."
-)
-
-output_folder <- "plots"
-output_dir <- file.path(base_dir, output_folder)
-
-# Create folder if it doesn't exist
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir, recursive = TRUE)
-}
+                   ".")
 
 library(Seurat)
+library(matrixStats)
 
-#### 1.  Load and merge ranked matrices ####
-rank_braun <- readRDS(file.path(base_dir, "braun/cell_rankings_braun.rds"))
-rank_velmeshev <- readRDS(file.path(base_dir, "velmeshev/cell_rankings_velmeshev.rds"))
+#### 1. Load precomputed subsampled ranked matrix and metadata ####
 
-colnames(rank_braun) <- paste0("braun_", colnames(rank_braun))
-colnames(rank_velmeshev) <- paste0(velm_", colnames(rank_velmeshev))
+# Paths to precomputed data
+rank_file <- file.path(base_dir, "merged_ranked_matrix_subsampled.rds")
+meta_file <- file.path(base_dir, "combined_meta.rds")
+subsample_file <- file.path(base_dir, "shared_subsampled_cells.rds")
 
-combined_rank_matrix <- cbind(rank_braun, rank_velmeshev)
+# Load precomputed rank matrix (subsampled cells x 20k genes)
+rank_sub <- readRDS(rank_file)
+combined_meta <- readRDS(meta_file)
+subsampled_cells <- readRDS(subsample_file)
 
-#### 2. Load and harmonize metadata ####
-seurat_obj_path <- file.path(base_dir, "braun/seurat_obj_merged_layers_only_processed.rds")
-b <- readRDS(seurat_obj_path)
-seurat_obj_path <- file.path(base_dir, "velmeshev/seurat_obj_subset_common_genes.rds")
-v <- readRDS(seurat_obj_path)
-meta_braun <- b@meta.data
-meta_velm <- v@meta.data
+# Subset metadata to just the subsampled cells
+meta_sub <- combined_meta[subsampled_cells, ]
 
-meta_braun$dataset <- "braun"
-meta_velm$dataset <- "velmeshev"
+#### 2. Select top 4000 most variable genes ####
 
-# Rename to standard column names
-meta_braun <- meta_braun[, c("Subclass", "Subdivision", "Developmental_week")]
-colnames(meta_braun) <- c("Cell_Type", "Region", "Developmental_Age")
-meta_velm <- meta_velm[, c("Lineage", "Region_Broad", "Age_Range")]
-colnames(meta_velm) <- c("Cell_Type", "Region", "Developmental_Age")
-
-# Prefix cell names to match expression matrix
-rownames(meta_braun) <- paste0("braun_", rownames(meta_braun))
-rownames(meta_velm) <- paste0("velm_", rownames(meta_velm))
-
-combined_meta <- rbind(meta_braun, meta_velm)
-
-#### 3. Subsample 10% of all cells ####
-set.seed(42)
-all_cells <- colnames(combined_rank_matrix)
-subsample_cells <- sample(all_cells, size = ceiling(0.1 * length(all_cells)))
-rank_sub <- combined_rank_matrix[, subsample_cells]
-meta_sub <- combined_meta[subsample_cells, ]
-
-#### 4. Select top 4000 variable genes ####
 gene_sd <- rowSds(as.matrix(rank_sub), na.rm = TRUE)
 top_genes <- names(sort(gene_sd, decreasing = TRUE))[1:4000]
 rank_top <- rank_sub[top_genes, ]
 
-#### 5. Create seurat object and run UMAP ####
+#### 3. Create seurat obj for batch effect visualization ####
+
 seurat_rank <- CreateSeuratObject(counts = rank_top)
 seurat_rank <- AddMetaData(seurat_rank, metadata = meta_sub)
 
-# Normalize: not needed because values are already transformed
-# FindVariableFeatures: skipped
+# Skip normalization since data is already rank-normalized
+seurat_rank <- ScaleData(seurat_rank, features = top_genes, verbose = FALSE)
+seurat_rank <- RunPCA(seurat_rank, features = top_genes, verbose = FALSE)
+seurat_rank <- RunUMAP(seurat_rank, dims = 1:30, verbose = FALSE)
 
-seurat_rank <- ScaleData(seurat_rank, features = top_genes)
-seurat_rank <- RunPCA(seurat_rank, features = top_genes)
-seurat_rank <- RunUMAP(seurat_rank, dims = 1:30)
+#### 4. Visualize vatch effect (color by dataset) ####
 
-# Visualize by dataset or any metadata
-DimPlot(seurat_rank, group.by = "Cell_Type", label = TRUE) + ggtitle("Cell Type")
+DimPlot(seurat_rank, group.by = "Cell_Type", label = TRUE, repel = TRUE) + ggtitle("Cell Type")
 DimPlot(seurat_rank, group.by = "dataset") + ggtitle("Dataset")
-
