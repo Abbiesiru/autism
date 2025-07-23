@@ -246,7 +246,10 @@ for (group_var in group_vars) {
 
 #### 2. Dot Plot ####
 
+sig_df <- fread(file.path(base_dir, "optimized_chisq_results_subclass.csv"))
+
 ### 2a. Avg expression & % expressing ###
+
 for (group_var in group_vars) {
   filename <- paste0("dot_plot_", tolower(group_var), ".pdf")
   filepath <- file.path(output_dir, filename)
@@ -254,20 +257,33 @@ for (group_var in group_vars) {
   if (!file.exists(filepath)) {
     message("Generating and saving: ", filepath)
     
-    title_text <- paste(
-      paste(genes_of_interest, collapse = ", "),
-      "expression by",
-      tolower(gsub("_", " ", group_var))
-    )
-    
     p <- DotPlot(
       object = seurat_obj_brain,
       features = genes_of_interest,
       group.by = group_var,
       cols = c("grey", "blue")
     ) +
-      #ggtitle(title_text) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    plot_data <- p$data  # get gene and group labels here
+    
+    annots <- merge(
+      plot_data,
+      sig_df[, .(Gene, Subclass, SigLabel)],
+      by.x = c("features.plot", "id"),
+      by.y = c("Gene", "Subclass"),
+      all.x = TRUE
+    )
+    
+    annots$SigLabel[is.na(annots$SigLabel)] <- ""
+    
+    p <- p + geom_text(
+      data = annots,
+      aes(x = features.plot, y = id, label = SigLabel),
+      size = 5,
+      vjust = -0.6
+    )
+    
     
     if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
     ggsave(filepath, plot = p, width = 10, height = 6, units = "in")
@@ -275,6 +291,7 @@ for (group_var in group_vars) {
     message("Skipped (already exists): ", filepath)
   }
 }
+
 
 ### 2b. Avg rank & % expressing ###
 
