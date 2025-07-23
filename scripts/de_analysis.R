@@ -126,24 +126,21 @@ for (gene in names(gene_celltype_map)) {
 overlay_path <- file.path(output_dir, "overlay_expression_summary.csv")
 overlay_data <- read.csv(overlay_path)
 
-seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
-overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_levels)
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_order)
+overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_order)
 
-genes_celltypes <- list(
-  SORCS1 = "OPC",
-  SORCS2 = "AST",
-  SORCS3 = "OPC"
-)
+valid_cells <- which(!is.na(FetchData(subset_obj, vars = gene)[,1]))
+subset_obj <- subset_obj[, valid_cells]
 
 # Loop through genes and plot
-for (gene in names(genes_celltypes)) {
-  cell_type <- genes_celltypes[[gene]]
+for (gene in names(gene_celltype_map)) {
+  cell_type <- gene_celltype_map[[gene]]
   
   # Subset Seurat object
   subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
   
   # Make sure Age_Range is a factor with proper order
-  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_levels)
+  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_order)
   
   # Subset overlay data
   df <- overlay_data %>%
@@ -161,6 +158,7 @@ for (gene in names(genes_celltypes)) {
     pt.size = 0
   ) +
     ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
+    labs(x = "Age Range")
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   
   # Overlay line + dots
@@ -175,11 +173,12 @@ for (gene in names(genes_celltypes)) {
     geom_point(
       data = df,
       aes(x = Age_Range, y = avg_exprs, size = percent_exprs),
-      color = "red",
+      color = "black",
       inherit.aes = FALSE
     ) +
-    scale_size_continuous(name = "% Expressing", limits = c(0, max_percent)) +
-    ylim(0, y_max)
+    scale_size_continuous(name = "% Expressing", limits = c(0, max_percent)) + 
+    coord_cartesian(ylim = c(0, y_max))
+
   
   # Save plot
   filename <- paste0("overlay_violin_", gene, "_", cell_type, ".pdf")
