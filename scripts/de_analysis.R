@@ -13,6 +13,7 @@ if (!dir.exists(output_dir)) {
 }
 
 library(Seurat)
+library(ggplot2)
 
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
@@ -111,7 +112,7 @@ for (gene in names(gene_celltype_map)) {
     subset_obj,
     features = gene,
     group.by = "Age_Range",
-    pt.size = 0.1
+    pt.size = 0
   ) + ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   

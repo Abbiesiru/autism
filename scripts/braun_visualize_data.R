@@ -85,6 +85,7 @@ seurat_obj$Subclass <- recode(
   seurat_obj$Subclass,
   "VSMC" = "Vascular smooth muscle cells",
   "Schwann" = "Schwann cells",
+  "PREAC" = "Pre-astrocytes",
   "OPC" = "Oligodendrocyte precursors",
   "Neuronal IPC" = "Neuronal intermediate progenitors",
   "Neuron" = "Neurons",
@@ -96,6 +97,16 @@ seurat_obj$Subclass <- recode(
   "Endothelial" = "Endothelial cells",
   "COPs (premyelinating)" = "Committed oligodendrocyte progenitors (premyelinating)"
 )
+
+brain_cell_types <- c("Radial glia", 
+                      "Pre-astrocytes", 
+                      "Oligodendrocyte precursors", 
+                      "Committed oligodendrocyte progenitors (premyelinating)", 
+                      "Neurons", 
+                      "Neuronal intermediate progenitors", 
+                      "Neuroblasts", 
+                      "Glioblasts")
+seurat_obj_brain <- subset(seurat_obj, subset = Subclass %in% brain_cell_types)
 
 #### 0. UMAP ####
 
@@ -250,12 +261,12 @@ for (group_var in group_vars) {
     )
     
     p <- DotPlot(
-      object = seurat_obj,
+      object = seurat_obj_brain,
       features = genes_of_interest,
       group.by = group_var,
       cols = c("grey", "blue")
     ) +
-      ggtitle(title_text) +
+      #ggtitle(title_text) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
     
     if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)

@@ -43,7 +43,7 @@ seurat_obj$Lineage <- recode(
   "OL" = "Oligodendrocytes",
   "OPC" = "Oligodendrocyte precursors",
   "OUT" = "Outliers",
-  "VASC" = "Vascular"
+  "VASC" = "Vascular cells"
 )
 
 seurat_obj$Region_Broad <- recode(
@@ -467,7 +467,8 @@ meta$cell <- rownames(meta)
 rank_data <- readRDS(file.path(base_dir, "cell_rankings_velmeshev.rds"))
 
 # Load ASD risk genes
-asd_risk_genes <- read.csv("autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+setwd("C:/Abbie/research/seurat")
+asd_risk_genes <- read.csv("./autism_risk_genes_combined.csv", sep = ",", header = TRUE)
 asd_risk_genes <- asd_risk_genes[asd_risk_genes$Gene %in% rownames(seurat_obj), ]
 gene_status <- setNames(asd_risk_genes$Status, asd_risk_genes$Gene)
 
@@ -645,7 +646,7 @@ if (!file.exists(file_heatmap_lineage)) {
     show_row_names = TRUE,
     show_column_names = TRUE,
     row_names_gp = gpar(fontsize = 14),
-    column_names_gp = gpar(fontsize = 6),
+    column_names_gp = gpar(fontsize = 4),
     col = exprs_colors,
     top_annotation = col_annot
   )
