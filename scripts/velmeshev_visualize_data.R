@@ -46,6 +46,16 @@ seurat_obj$Lineage <- recode(
   "VASC" = "Vascular cells"
 )
 
+brain_cell_types <- c("Astrocytes", 
+                      "Excitatory neurons", 
+                      "Glial progenitors", 
+                      "Inhibitory neurons", 
+                      "Microglia", 
+                      "Oligodendrocytes", 
+                      "Oligodendrocyte precursors" 
+                      )
+seurat_obj_brain <- subset(seurat_obj, subset = Lineage %in% brain_cell_types)
+
 seurat_obj$Region_Broad <- recode(
   seurat_obj$Region_Broad,
   "CC" = "Cingulate cortex",
@@ -151,7 +161,6 @@ generate_and_save_if_new <- function(seurat_obj, group_var, gene, split_by_age, 
 
 ### generate 12 plots: 3 genes x 2 annotations, split/unsplit ###
 
-group_vars <- c("Lineage")
 split_options <- c(FALSE)
 
 for (group_var in group_vars) {
@@ -193,15 +202,16 @@ for (group_var in group_vars) {
       group.by = group_var,
       cols = c("grey", "blue")
     ) +
+      labs(x = "Gene", y = "Cell Type") +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
     
     plot_data <- p$data  # get gene and group labels here
     
     annots <- merge(
       plot_data,
-      sig_df[, .(Gene, Subclass, SigLabel)],
+      sig_df[, .(Gene, Lineage, SigLabel)],
       by.x = c("features.plot", "id"),
-      by.y = c("Gene", "Subclass"),
+      by.y = c("Gene", "Lineage"),
       all.x = TRUE
     )
     

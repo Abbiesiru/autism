@@ -95,13 +95,13 @@ seurat_obj$Subclass <- recode(
   "Fibroblast" = "Fibroblasts",
   "Erythrocyte" = "Erythrocytes",
   "Endothelial" = "Endothelial cells",
-  "COPs (premyelinating)" = "Committed oligodendrocyte progenitors (premyelinating)"
+  "COPs (premyelinating)" = "Committed oligodendrocyte progenitors"
 )
 
 brain_cell_types <- c("Radial glia", 
                       "Pre-astrocytes", 
                       "Oligodendrocyte precursors", 
-                      "Committed oligodendrocyte progenitors (premyelinating)", 
+                      "Committed oligodendrocyte progenitors", 
                       "Neurons", 
                       "Neuronal intermediate progenitors", 
                       "Neuroblasts", 
@@ -263,6 +263,7 @@ for (group_var in group_vars) {
       group.by = group_var,
       cols = c("grey", "blue")
     ) +
+      labs(x = "Gene", y = "Cell Type") +   
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
     
     plot_data <- p$data  # get gene and group labels here

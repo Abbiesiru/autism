@@ -18,13 +18,31 @@ library(data.table)
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 
-# Define genes
+seurat_obj$Lineage <- recode(
+  seurat_obj$Lineage,
+  "AST" = "Astrocytes",
+  "ExNeu" = "Excitatory neurons",
+  "GLIALPROG" = "Glial progenitors",
+  "IN" = "Inhibitory neurons",
+  "MG" = "Microglia",
+  "OL" = "Oligodendrocytes",
+  "OPC" = "Oligodendrocyte precursors",
+  "OUT" = "Outliers",
+  "VASC" = "Vascular cells"
+)
 
 
 #### CELL TYPE ####
 #Lineage cell types
 genes <- c("SORCS1", "SORCS2", "SORCS3")
-cell_types <- setdiff(unique(seurat_obj$Lineage), "OUT")  # excludes 'OUT'
+cell_types <- c("Astrocytes", 
+                "Excitatory neurons", 
+                "Glial progenitors", 
+                "Inhibitory neurons", 
+                "Microglia", 
+                "Oligodendrocytes", 
+                "Oligodendrocyte precursors" 
+                )
 
 # Get expression data and metadata
 expr_data <- FetchData(seurat_obj, vars = genes)
@@ -82,7 +100,7 @@ for (gene in genes) {
     
     results[[length(results) + 1]] <- list(
       Gene = gene,
-      CellType = ct,
+      Lineage = ct,
       A = a, B = b, C = c, D = d,
       RawP = raw_p
     )
@@ -94,6 +112,11 @@ for (gene in genes) {
 results_df <- rbindlist(results)
 results_df[, AdjustedP := pmin(RawP * .N, 1)]
 results_df[, Significant := AdjustedP < 0.05]
+results_df[, SigLabel := fifelse(is.na(AdjustedP), "",
+                                 fifelse(AdjustedP < 0.001, "***",
+                                         fifelse(AdjustedP < 0.01, "**",
+                                                 fifelse(AdjustedP < 0.05, "*", ""))))]
+
 
 # Save or view
 fwrite(results_df, file.path(base_dir, "optimized_chisq_results_lineage.csv"))

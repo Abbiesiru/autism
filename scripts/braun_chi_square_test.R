@@ -14,6 +14,7 @@ if (!dir.exists(output_dir)) {
 
 library(Seurat)
 library(data.table)
+library(dplyr)
 
 seurat_obj_path <- file.path(base_dir, "seurat_obj_merged_layers_only_processed.rds")
 seurat_obj <- readRDS(seurat_obj_path)
@@ -32,10 +33,8 @@ seurat_obj$Subclass <- recode(
   "Fibroblast" = "Fibroblasts",
   "Erythrocyte" = "Erythrocytes",
   "Endothelial" = "Endothelial cells",
-  "COPs (premyelinating)" = "Committed oligodendrocyte progenitors (premyelinating)"
+  "COPs (premyelinating)" = "Committed oligodendrocyte progenitors"
 )
-
-# Define genes
 
 
 #### CELL TYPE ####
@@ -44,7 +43,7 @@ genes <- c("SORCS1", "SORCS2", "SORCS3")
 cell_types <- c("Radial glia", 
                 "Pre-astrocytes", 
                 "Oligodendrocyte precursors", 
-                "Committed oligodendrocyte progenitors (premyelinating)", 
+                "Committed oligodendrocyte progenitors", 
                 "Neurons", 
                 "Neuronal intermediate progenitors", 
                 "Neuroblasts", 
@@ -105,7 +104,7 @@ for (gene in genes) {
     
     results[[length(results) + 1]] <- list(
       Gene = gene,
-      CellType = ct,
+      Subclass = ct,
       A = a, B = b, C = c, D = d,
       RawP = raw_p
     )
