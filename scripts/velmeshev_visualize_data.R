@@ -402,6 +402,21 @@ for (gene in genes_of_interest) {
   }
 }
 
+genes_of_interest <- c("SORCS1", "SORCS2", "SORCS3")
+celltype_map <- list(SORCS1 = "OPC", SORCS2 = "AST", SORCS3 = "OPC")
+
+# Filter combined_summary to include only relevant gene-celltype combos
+overlay_data <- combined_summary %>%
+  filter(Gene %in% genes_of_interest) %>%
+  rowwise() %>%
+  filter(Lineage == celltype_map[[Gene]]) %>%
+  ungroup() %>%
+  select(Gene, Lineage, Age_Range, avg_exprs, percent_exprs)
+
+# Save to CSV
+overlay_path <- file.path(output_dir, "overlay_expression_summary.csv")
+write.csv(overlay_data, overlay_path, row.names = FALSE)
+
 
 #### 4. dataset statistics ####
 
