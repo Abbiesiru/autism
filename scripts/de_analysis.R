@@ -121,3 +121,76 @@ for (gene in names(gene_celltype_map)) {
   ggsave(pdf_path, plot = p, width = 8, height = 5)
 }
 
+#### 3. Overlay line plot on violin plot ####
+
+overlay_path <- file.path(output_dir, "overlay_expression_summary.csv")
+overlay_data <- read.csv(overlay_path)
+
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_levels)
+overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_levels)
+
+genes_celltypes <- list(
+  SORCS1 = "OPC",
+  SORCS2 = "AST",
+  SORCS3 = "OPC"
+)
+
+# Loop through genes and plot
+for (gene in names(genes_celltypes)) {
+  cell_type <- genes_celltypes[[gene]]
+  
+  # Subset Seurat object
+  subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
+  
+  # Make sure Age_Range is a factor with proper order
+  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_levels)
+  
+  # Subset overlay data
+  df <- overlay_data %>%
+    filter(Gene == gene, Lineage == cell_type)
+  
+  # Determine y-axis limits
+  y_max <- max(c(df$avg_exprs, FetchData(subset_obj, vars = gene)[,1]), na.rm = TRUE) * 1.1
+  max_percent <- max(df$percent_exprs, na.rm = TRUE)
+  
+  # Violin plot
+  vln <- VlnPlot(
+    subset_obj,
+    features = gene,
+    group.by = "Age_Range",
+    pt.size = 0
+  ) +
+    ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Overlay line + dots
+  overlay_plot <- vln +
+    geom_line(
+      data = df,
+      aes(x = Age_Range, y = avg_exprs, group = 1),
+      color = "black",
+      linewidth = 1,
+      inherit.aes = FALSE
+    ) +
+    geom_point(
+      data = df,
+      aes(x = Age_Range, y = avg_exprs, size = percent_exprs),
+      color = "red",
+      inherit.aes = FALSE
+    ) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, max_percent)) +
+    ylim(0, y_max)
+  
+  # Save plot
+  filename <- paste0("overlay_violin_", gene, "_", cell_type, ".pdf")
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = overlay_plot,
+    width = 8,
+    height = 5
+  )
+  
+  message("Saved: ", filename)
+}
+
+
