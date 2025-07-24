@@ -14,6 +14,7 @@ if (!dir.exists(output_dir)) {
 
 library(Seurat)
 library(ggplot2)
+library(dplyr)
 
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
@@ -129,8 +130,6 @@ overlay_data <- read.csv(overlay_path)
 seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_order)
 overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_order)
 
-valid_cells <- which(!is.na(FetchData(subset_obj, vars = gene)[,1]))
-subset_obj <- subset_obj[, valid_cells]
 
 # Loop through genes and plot
 for (gene in names(gene_celltype_map)) {
@@ -138,6 +137,8 @@ for (gene in names(gene_celltype_map)) {
   
   # Subset Seurat object
   subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
+  valid_cells <- which(!is.na(FetchData(subset_obj, vars = gene)[,1]))
+  subset_obj <- subset_obj[, valid_cells]
   
   # Make sure Age_Range is a factor with proper order
   subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_order)
@@ -186,7 +187,7 @@ for (gene in names(gene_celltype_map)) {
     filename = file.path(output_dir, filename),
     plot = overlay_plot,
     width = 8,
-    height = 5
+    height = 10
   )
   
   message("Saved: ", filename)
