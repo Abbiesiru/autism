@@ -15,6 +15,7 @@ if (!dir.exists(output_dir)) {
 library(Seurat)
 library(ggplot2)
 library(dplyr)
+library(tidyr)
 
 seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
@@ -124,6 +125,8 @@ for (gene in names(gene_celltype_map)) {
 
 #### 3. Overlay line plot on violin plot ####
 
+### 3a. Average exprs ####
+
 overlay_path <- file.path(output_dir, "overlay_expression_summary.csv")
 overlay_data <- read.csv(overlay_path)
 
@@ -194,3 +197,145 @@ for (gene in names(gene_celltype_map)) {
 }
 
 
+### 3b. Median exprs ####
+
+overlay_path <- file.path(output_dir, "overlay_median_expression_summary.csv")
+overlay_data <- read.csv(overlay_path)
+
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_order)
+overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_order)
+
+
+# Loop through genes and plot
+for (gene in names(gene_celltype_map)) {
+  cell_type <- gene_celltype_map[[gene]]
+  
+  # Subset Seurat object
+  subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
+  valid_cells <- which(!is.na(FetchData(subset_obj, vars = gene)[,1]))
+  subset_obj <- subset_obj[, valid_cells]
+  
+  # Make sure Age_Range is a factor with proper order
+  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_order)
+  
+  # Subset overlay data
+  df <- overlay_data %>%
+    filter(Gene == gene, Lineage == cell_type)
+  
+  # Determine y-axis limits
+  y_max <- max(c(df$median_exprs, FetchData(subset_obj, vars = gene)[,1]), na.rm = TRUE) * 1.1
+  max_percent <- max(df$percent_exprs, na.rm = TRUE)
+  
+  # Violin plot
+  vln <- VlnPlot(
+    subset_obj,
+    features = gene,
+    group.by = "Age_Range",
+    pt.size = 0
+  ) +
+    ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
+    labs(x = "Age Range")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Overlay line + dots
+  overlay_plot <- vln +
+    geom_line(
+      data = df,
+      aes(x = Age_Range, y = median_exprs, group = 1),
+      color = "black",
+      linewidth = 1,
+      inherit.aes = FALSE
+    ) +
+    geom_point(
+      data = df,
+      aes(x = Age_Range, y = median_exprs, size = percent_exprs),
+      color = "black",
+      inherit.aes = FALSE
+    ) +
+    scale_size_continuous(name = "% Expressing", limits = c(0, max_percent)) + 
+    coord_cartesian(ylim = c(0, y_max))
+  
+  
+  # Save plot
+  filename <- paste0("overlay_violin_", gene, "_", cell_type, "_median.pdf")
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = overlay_plot,
+    width = 8,
+    height = 10
+  )
+  
+  message("Saved: ", filename)
+}
+
+### 3. % expressing ###
+
+# Load overlay data
+overlay_path <- file.path(output_dir, "overlay_median_expression_summary.csv")
+overlay_data <- read.csv(overlay_path)
+
+# Set age order
+seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_order)
+overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_order)
+
+# Loop through genes
+for (gene in names(gene_celltype_map)) {
+  cell_type <- gene_celltype_map[[gene]]
+  
+  # Subset Seurat object
+  subset_obj <- subset(seurat_obj, subset = Lineage == cell_type)
+  valid_cells <- which(!is.na(FetchData(subset_obj, vars = gene)[, 1]))
+  subset_obj <- subset_obj[, valid_cells]
+  subset_obj$Age_Range <- factor(subset_obj$Age_Range, levels = age_order)
+  
+  # Subset overlay data
+  df <- overlay_data %>% filter(Gene == gene, Lineage == cell_type)
+  
+  # Scale for dual axis
+  max_expr <- max(FetchData(subset_obj, vars = gene)[, 1], na.rm = TRUE)
+  max_percent <- max(df$percent_exprs, na.rm = TRUE)
+  scale_factor <- max_expr / max_percent  # how to scale % to fit left axis
+  
+  # Create violin plot
+  vln <- VlnPlot(
+    subset_obj,
+    features = gene,
+    group.by = "Age_Range",
+    pt.size = 0
+  ) +
+    ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
+    labs(x = "Age Range", y = "Expression Level") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Add % expressing as scaled line and points
+  overlay_plot <- vln +
+    geom_line(
+      data = df,
+      aes(x = Age_Range, y = percent_exprs * scale_factor, group = 1),
+      color = "red",
+      linewidth = 1,
+      inherit.aes = FALSE
+    ) +
+    geom_point(
+      data = df,
+      aes(x = Age_Range, y = percent_exprs * scale_factor),
+      color = "red",
+      size = 2,
+      inherit.aes = FALSE
+    ) +
+    scale_y_continuous(
+      name = "Expression Level",
+      sec.axis = sec_axis(~ . / scale_factor, name = "% Expressing")
+    )
+  
+  # Save
+  filename <- paste0("dual_axis_violin_", gene, "_", cell_type, ".pdf")
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = overlay_plot,
+    width = 8,
+    height = 10
+  )
+  
+  message("Saved: ", filename)
+}
