@@ -86,7 +86,37 @@ gene_celltype_df <- data.frame(
 write.csv(gene_celltype_df, file.path(output_dir, "specificity_matrix_by_gene.csv"))
 
 
-#### 2. Plot % of known vs novel ASD genes expressed in neurons ####
+#### 2. Identify cell type with highest average expression for each ASD gene ####
+# Only keep genes that are markers for at least 1 cell type
+binary_df <- read.csv(file.path(output_dir, "ASD_gene_specificity_matrix.csv"), row.names = 1)
+marker_genes <- rownames(binary_df)[rowSums(binary_df) > 0]
+
+# Initialize matrix
+max_expr_matrix <- matrix(0, nrow = length(marker_genes), ncol = length(celltypes))
+rownames(max_expr_matrix) <- marker_genes
+colnames(max_expr_matrix) <- celltypes
+
+# Loop through genes
+for (gene in marker_genes) {
+  avg_exprs <- sapply(celltypes, function(ct) {
+    cells <- colnames(seurat_obj)[seurat_obj$Lineage == ct]
+    if (length(cells) == 0) return(NA)
+    mean(FetchData(seurat_obj, vars = gene)[cells, 1], na.rm = TRUE)
+  })
+  
+  # Identify cell type with max average expression
+  max_ct <- names(avg_exprs)[which.max(avg_exprs)]
+  
+  # Fill in matrix
+  max_expr_matrix[gene, max_ct] <- 1
+}
+
+# Convert to data frame and write out
+max_expr_df <- as.data.frame(max_expr_matrix)
+write.csv(max_expr_df, file.path(output_dir, "ASD_max_expression_matrix.csv"))
+
+
+#### 3. Plot % of known vs novel ASD genes expressed in neurons ####
 library(ggplot2)
 library(dplyr)
 

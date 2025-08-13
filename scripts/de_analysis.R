@@ -130,6 +130,8 @@ for (gene in names(gene_celltype_map)) {
 overlay_path <- file.path(output_dir, "overlay_expression_summary.csv")
 overlay_data <- read.csv(overlay_path)
 
+age_order <- c("2nd trimester", "3rd trimester", "0-1 years", "1-2 years", "2-4 years", 
+               "4-10 years", "10-20 years", "Adult")
 seurat_obj$Age_Range <- factor(seurat_obj$Age_Range, levels = age_order)
 overlay_data$Age_Range <- factor(overlay_data$Age_Range, levels = age_order)
 
@@ -294,9 +296,9 @@ for (gene in names(gene_celltype_map)) {
   # Scale for dual axis
   max_expr <- max(FetchData(subset_obj, vars = gene)[, 1], na.rm = TRUE)
   max_percent <- max(df$percent_exprs, na.rm = TRUE)
-  scale_factor <- max_expr / max_percent  # how to scale % to fit left axis
+  scale_factor <- max_expr / max_percent
   
-  # Create violin plot
+  # Create violin plot with black fill
   vln <- VlnPlot(
     subset_obj,
     features = gene,
@@ -305,9 +307,10 @@ for (gene in names(gene_celltype_map)) {
   ) +
     ggtitle(paste(gene, "expression in", cell_type, "across ages")) +
     labs(x = "Age Range", y = "Expression Level") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_manual(values = rep("black", length(age_order)))
   
-  # Add % expressing as scaled line and points
+  # Overlay % expressing as scaled red line and points (include "1-2 years")
   overlay_plot <- vln +
     geom_line(
       data = df,
@@ -326,6 +329,12 @@ for (gene in names(gene_celltype_map)) {
     scale_y_continuous(
       name = "Expression Level",
       sec.axis = sec_axis(~ . / scale_factor, name = "% Expressing")
+    ) +
+    theme(
+      axis.text.y.right = element_text(color = "red"),
+      axis.title.y.right = element_text(color = "red"),
+      axis.ticks.y.right = element_line(color = "red"),
+      axis.line.y.right = element_line(color = "red")
     )
   
   # Save
