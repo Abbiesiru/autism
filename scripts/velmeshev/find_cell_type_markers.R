@@ -1,10 +1,11 @@
 base_dir <- switch(Sys.info()[["nodename"]],
                    "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat/prepostnatal",
                    "gauss" = "/home/abbiew/single_cell/velmeshev",
+                   "macbook-air.lan"     = "/Users/abbiesiru/Desktop/research/shen lab/autism",
                    "."
 )
 
-output_folder <- "plots"
+output_folder <- "output/velmeshev/gene specificity"
 output_dir <- file.path(base_dir, output_folder)
 
 # Create folder if it doesn't exist
@@ -15,11 +16,13 @@ if (!dir.exists(output_dir)) {
 library(Seurat)
 library(dplyr)
 library(tibble)
+library(ComplexHeatmap)
+library(circlize)
+library(grid)  
 
-setwd("C:/Abbie/research/seurat")
-asd_risk_genes <- read.csv("./autism_risk_genes_combined.csv", sep = ",", header = TRUE)
+asd_risk_genes <- read.csv(file.path(base_dir, "files/autism_risk_genes_combined.csv"), sep = ",", header = TRUE)
 
-seurat_obj_path <- file.path(base_dir, "seurat_obj_subset_common_genes.rds")
+seurat_obj_path <- file.path(base_dir, "files/velmeshev/seurat_obj_subset_common_genes.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 
 seurat_obj$Lineage <- recode(
@@ -46,6 +49,11 @@ binary_matrix <- matrix(0, nrow = length(asd_risk_genes), ncol = length(celltype
 rownames(binary_matrix) <- asd_risk_genes
 colnames(binary_matrix) <- celltypes
 
+logp_matrix <- matrix(0, nrow = length(asd_risk_genes), ncol = length(celltypes),
+                      dimnames = list(asd_risk_genes, celltypes))
+
+markers_asd_list <- list() 
+
 # Loop through each cell type and compute markers
 for (ct in celltypes) {
   message("Processing: ", ct)
@@ -69,11 +77,24 @@ for (ct in celltypes) {
   
   # Fill in binary matrix
   binary_matrix[rownames(markers_asd), ct] <- markers_asd$is_specific
+  
+  # Fill logp_matrix only for significant genes
+  logp_matrix[rownames(markers_asd), ct] <- ifelse(markers_asd$is_specific == 1,
+                                                   -log10(markers_asd$p_val_adj), 0)
+  
+  markers_asd_list[[ct]] <- markers_asd
+  
+  # write.csv(markers_asd,
+            # file = file.path(output_dir, paste0("markers_ASD_", ct, ".csv")),
+            # row.names = TRUE)
+  
 }
 
 # Convert to data frame and write out
 binary_df <- as.data.frame(binary_matrix)
 write.csv(binary_df, file.path(output_dir, "ASD_gene_specificity_matrix.csv"))
+# logp_df <- as.data.frame(logp_matrix)
+# write.csv(logp_df, file = file.path(output_dir, "logp_matrix.csv"), row.names = TRUE)
 
 #### 1. Identify cell type(s) with highest average expression for each ASD gene ####
 gene_celltype_df <- data.frame(
@@ -115,6 +136,50 @@ for (gene in marker_genes) {
 max_expr_df <- as.data.frame(max_expr_matrix)
 write.csv(max_expr_df, file.path(output_dir, "ASD_max_expression_matrix.csv"))
 
+### 2a. generate gene x cell type heatmap ###
+logp_df <- read.csv(file.path(output_dir, "logp_matrix.csv"), row.names = 1)
+logp_matrix <- as.matrix(logp_df)
+mode(logp_matrix) <- "numeric"
+
+# filter gene and set max value
+logp_matrix_cap = logp_matrix[apply(logp_matrix, 1, max) > 0, ]
+logp_matrix_cap[logp_matrix_cap >= 300] = 300
+View(logp_matrix_cap)
+
+# color scale
+grey_threshold <- -log10(0.05)
+max_val <- max(logp_matrix_cap)
+
+col_fun <- function(x) {
+  sapply(x, function(val) {
+    if (val <= grey_threshold) {
+      "grey80"
+    } else {
+      # map linearly from grey_threshold → max_val to cadetblue1 → plum4
+      colorRampPalette(c("cadetblue1", "plum4"))(100)[
+        ceiling((val - grey_threshold) / (max_val - grey_threshold) * 99) + 1
+      ]
+    }
+  })
+}
+
+# generate heatmap
+pdf(file.path(output_dir, "cell_type_markers_heatmap.pdf"), 
+    width = 12,  
+    height = 12)  
+
+Heatmap(logp_matrix_cap,
+        name = "-log10(adj p)",
+        col = col_fun,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        row_dend_side = "left",
+        column_dend_side = "top",
+        row_names_gp = gpar(fontsize = 7),  
+        column_names_gp = gpar(fontsize = 12)
+)
+
+dev.off()
 
 #### 3. Plot % of known vs novel ASD genes expressed in neurons ####
 library(ggplot2)
