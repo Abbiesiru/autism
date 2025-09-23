@@ -1,10 +1,11 @@
 base_dir <- switch(Sys.info()[["nodename"]],
                    "DESKTOP-6HPT8FH" = "C:/Abbie/research/seurat/braun",
                    "gauss" = "/home/abbiew/single_cell/braun",
+                   "macbook-air.lan"     = "/Users/abbiesiru/Desktop/research/shen lab/autism",
                    "."
 )
 
-output_folder <- "plots"
+output_folder <- "output/braun"
 output_dir <- file.path(base_dir, output_folder)
 
 # Create folder if it doesn't exist
@@ -16,7 +17,7 @@ library(Seurat)
 library(data.table)
 library(dplyr)
 
-seurat_obj_path <- file.path(base_dir, "seurat_obj_merged_layers_only_processed.rds")
+seurat_obj_path <- file.path(base_dir, "files/braun/seurat_obj_merged_layers_only_processed.rds")
 seurat_obj <- readRDS(seurat_obj_path)
 
 seurat_obj$Subclass <- recode(
