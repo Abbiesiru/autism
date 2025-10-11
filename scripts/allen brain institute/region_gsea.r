@@ -126,23 +126,49 @@ enrichment_test <- function(region_genes, asd_genes, universe_size) {
 }
 
 results_all <- do.call(rbind, lapply(names(region_upreg), function(region) {
-  df <- enrichment_test(region_upreg[[region]], asd_all, all_genes)
+  df <- enrichment_test(region_upreg[[region]], asd_all, length(all_genes))
   df$Region <- region
   return(df)
 }))
 
 # adjust p-values for multiple testing
-results_all$FDR <- p.adjust(results_all$pval, method = "BH")
+### eigen value decomposition ###
+
+all_genes <- unique(unlist(region_upreg))
+region_names <- names(region_upreg)
+
+region_gene_matrix <- matrix(0, nrow=length(region_names), ncol=length(all_genes),
+                             dimnames=list(region_names, all_genes))
+
+for (r in region_names) {
+  region_gene_matrix[r, region_upreg[[r]]] <- 1
+}
+
+region_corr <- cor(t(region_gene_matrix))  # correlation between regions
+
+eig <- eigen(region_corr, only.values = TRUE)$values
+total_variance <- sum(eig)
+proportion_variance_explained <- eig / total_variance
+
+M <- nrow(region_corr)  # number of regions
+# Meff <- which(cumsum(proportion_variance_explained) >= 0.95)[1]
+# Meff <- sum(proportion_variance_explained>=0.01)
+
+raw_pvals <- results_all$pval
+
+# Bonferroni using Meff
+bonf_corrected <- pmin(raw_pvals * Meff, 1)  # cap at 1
+results_all$pval_adj <- bonf_corrected
 
 # reorder columns
 results_all <- results_all[, c("Region", "K", "n", "k", "overlap_genes", "N", "fold_enrichment", "pval", "FDR")]
 
 
 #### 3. filter by significant results only ####
-sig_results_all <- subset(results_all, pval < 0.01)
+sig_results_all <- subset(results_all, FDR < 0.05)
 
 # order by significance
-sig_results_all <- sig_results_all[order(sig_results_all$pval), ]
+sig_results_all <- sig_results_all[order(sig_results_all$FDR), ]
 
 
 
@@ -225,23 +251,25 @@ enrichment_test <- function(region_genes, asd_genes, universe_size) {
 }
 
 results_new <- do.call(rbind, lapply(names(region_upreg), function(region) {
-  df <- enrichment_test(region_upreg[[region]], asd_new, all_genes)
+  df <- enrichment_test(region_upreg[[region]], asd_new, length(all_genes))
   df$Region <- region
   return(df)
 }))
 
 # adjust p-values for multiple testing
-results_new$FDR <- p.adjust(results_new$pval, method = "BH")
+raw_pvals <- results_new$pval
+bonf_corrected <- pmin(raw_pvals * Meff, 1)  # cap at 1
+results_new$FDR<- bonf_corrected
 
 # reorder columns
 results_new <- results_new[, c("Region", "K", "n", "k", "overlap_genes", "N", "fold_enrichment", "pval", "FDR")]
 
 
 #### 3. filter by significant results only ####
-sig_results_new <- subset(results_new, pval < 0.01)
+sig_results_new <- subset(results_new, FDR < 0.05)
 
 # order by significance
-sig_results_new <- sig_results_new[order(sig_results_new$pval), ]
+sig_results_new <- sig_results_new[order(sig_results_new$FDR), ]
 
 
 
@@ -324,23 +352,25 @@ enrichment_test <- function(region_genes, asd_genes, universe_size) {
 }
 
 results_known <- do.call(rbind, lapply(names(region_upreg), function(region) {
-  df <- enrichment_test(region_upreg[[region]], asd_known, all_genes)
+  df <- enrichment_test(region_upreg[[region]], asd_known, length(all_genes))
   df$Region <- region
   return(df)
 }))
 
 # adjust p-values for multiple testing
-results_known$FDR <- p.adjust(results_known$pval, method = "BH")
+raw_pvals <- results_known$pval
+bonf_corrected <- pmin(raw_pvals * Meff, 1)  # cap at 1
+results_known$FDR<- bonf_corrected
 
 # reorder columns
 results_known <- results_known[, c("Region", "K", "n", "k", "overlap_genes", "N", "fold_enrichment", "pval", "FDR")]
 
 
 #### 3. filter by significant results only ####
-sig_results_known <- subset(results_known, pval < 0.01)
+sig_results_known <- subset(results_known, FDR < 0.05)
 
 # order by significance
-sig_results_known <- sig_results_known[order(sig_results_known$pval), ]
+sig_results_known <- sig_results_known[order(sig_results_known$FDR), ]
 
 
 
@@ -371,10 +401,10 @@ merged_results <- sig_results_all %>%
   ) %>%
   # add counts for new/known genes
   mutate(
-    n_new = ifelse(is.na(overlap_genes_new) | overlap_genes_new == "",
+    number_new = ifelse(is.na(overlap_genes_new) | overlap_genes_new == "",
                    0,
                    lengths(strsplit(overlap_genes_new, ";"))),
-    n_known = ifelse(is.na(overlap_genes_known) | overlap_genes_known == "",
+    number_known = ifelse(is.na(overlap_genes_known) | overlap_genes_known == "",
                      0,
                      lengths(strsplit(overlap_genes_known, ";")))
   ) %>%
@@ -391,3 +421,100 @@ write.csv(results_all, file.path(output_dir, "asd_genes_by_region_all.csv"))
 write.csv(results_new, file.path(output_dir, "asd_genes_by_region_new.csv"))
 write.csv(results_known, file.path(output_dir, "asd_genes_by_region_known.csv"))
 write.csv(merged_results, file.path(output_dir, "asd_genes_by_region_merged.csv"))
+
+#### 5. DIRECT COMPARISON: known vs new genes per region ####
+
+compare_known_new <- lapply(names(region_upreg), function(region) {
+  region_genes <- region_upreg[[region]]
+  
+  # counts
+  a <- sum(asd_known %in% region_genes)   # known in region
+  b <- length(asd_known) - a              # known not in region
+  c <- sum(asd_new %in% region_genes)     # new in region
+  d <- length(asd_new) - c                # new not in region
+  
+  tab <- matrix(c(a, c, b, d), nrow = 2, byrow = TRUE,
+                dimnames = list(GeneSet = c("Known","New"),
+                                RegionUp = c("Yes","No")))
+  
+  ft <- fisher.test(tab)
+  
+  data.frame(
+    Region = region,
+    known_in_region = a,
+    known_not_in_region = b,
+    new_in_region = c,
+    new_not_in_region = d,
+    odds_ratio = unname(ft$estimate),
+    pvalue_fisher = ft$p.value,
+    stringsAsFactors = FALSE
+  )
+})
+
+results_compare <- do.call(rbind, compare_known_new)
+results_compare$FDR <- p.adjust(results_compare$pvalue_fisher, method = "BH")
+
+# order by significance
+results_compare <- results_compare[order(results_compare$pvalue_fisher), ]
+
+
+### eigen value decomposition ###
+
+all_genes <- unique(unlist(region_upreg))
+region_names <- names(region_upreg)
+
+region_gene_matrix <- matrix(0, nrow=length(region_names), ncol=length(all_genes),
+                             dimnames=list(region_names, all_genes))
+
+for (r in region_names) {
+  region_gene_matrix[r, region_upreg[[r]]] <- 1
+}
+
+region_corr <- cor(t(region_gene_matrix))  # correlation between regions
+
+eig <- eigen(region_corr, only.values = TRUE)$values
+total_variance <- sum(eig)
+proportion_variance_explained <- eig / total_variance
+
+# Li & Ji method for effective number of independent tests
+M <- nrow(region_corr)  # number of regions
+# Meff <- sum(eig>=1)  # effective # of tests
+Meff <- sum(proportion_variance_explained>=0.01)
+
+raw_pvals <- results_compare$pvalue_fisher  # your list of Fisher test p-values
+
+# Bonferroni using Meff
+bonf_corrected <- pmin(raw_pvals * Meff, 1)  # cap at 1
+# Custom BH-FDR with Meff
+# bh_corrected <- p.adjust(raw_pvals, method="BH") * (length(raw_pvals) / Meff)
+# bh_corrected <- pmin(bh_corrected, 1)  # cap at 1
+
+results_compare$FDR_corrected <- bonf_corrected
+
+# save
+write.csv(results_compare, file.path(output_dir, "asd_known_vs_new_by_region.csv"), row.names = FALSE)
+
+
+### scree plot ###
+# w/ cumulative line 
+cum_var <- cumsum(variance_explained)
+plot(variance_explained, type = "b", pch = 19,
+     xlab = "Component",
+     ylab = "% Variance Explained",
+     main = "Scree Plot of Brain Region Correlation Eigenvalues",
+     ylim = c(0, max(cum_var)))  # extend y-axis to fit cumulative
+
+lines(1:length(cum_var), cum_var, type = "b", col = "blue", pch = 17)
+legend("topright", legend = c("Individual", "Cumulative"),
+       col = c("black", "blue"), pch = c(19, 17), bty = "n")
+
+# w/o
+variance_explained <- eig / sum(eig) * 100  
+
+# Scree plot showing % variance explained
+plot(variance_explained, type = "b", pch = 19,
+     xlab = "Component",
+     ylab = "% Variance Explained",
+     main = "Scree Plot of Brain Region Correlation Eigenvalues")
+
+
