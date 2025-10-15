@@ -151,8 +151,8 @@ total_variance <- sum(eig)
 proportion_variance_explained <- eig / total_variance
 
 M <- nrow(region_corr)  # number of regions
-# Meff <- which(cumsum(proportion_variance_explained) >= 0.95)[1]
-# Meff <- sum(proportion_variance_explained>=0.01)
+# Meff <- which(cumsum(proportion_variance_explained) >= 0.25)[1]
+Meff <- sum(proportion_variance_explained>=0.01)
 
 raw_pvals <- results_all$pval
 
