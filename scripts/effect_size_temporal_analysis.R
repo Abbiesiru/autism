@@ -31,9 +31,6 @@ rownames(binary_matrix) <- asd_risk_genes
 colnames(binary_matrix) <- age_ranges
 
 
-logp_matrix <- matrix(0, nrow = length(asd_risk_genes), ncol = length(celltypes),
-                      dimnames = list(asd_risk_genes, celltypes))
-
 gene_peak_list <- list()
 
 for (age in age_ranges) {
@@ -53,8 +50,11 @@ for (age in age_ranges) {
   markers_asd <- markers %>%
     rownames_to_column("gene") %>%
     filter(gene %in% asd_risk_genes) %>%
-    mutate(is_specific = ifelse(avg_log2FC > 1 & p_val_adj < 0.05, 1, 0)) %>%
+    mutate(is_specific = (avg_log2FC > 0 & p_val_adj < 0.05)) %>%
     column_to_rownames("gene")
+  
+  markers_asd <- markers_asd %>%
+    filter(is_specific)
   
   gene_peak_list[[age]] <- markers_asd
 }
@@ -75,7 +75,7 @@ for (gene in asd_risk_genes) {
     if (!is.null(markers_age) && gene %in% rownames(markers_age)) {
       m <- markers_age[gene, , drop = FALSE]
       
-      if (!is.na(m$is_specific) && m$is_specific == 1) {
+      if (isTRUE(m$is_specific)) {
         sig_ages <- c(sig_ages, age)
         expr_vals <- FetchData(seurat_obj, vars = gene)[seurat_obj$Age_Range == age, 1]
         avg_expr <- c(avg_expr, mean(expr_vals, na.rm = TRUE))
@@ -83,6 +83,7 @@ for (gene in asd_risk_genes) {
       }
     }
   }
+  
   
   # if gene is significant in ≥1 age range
   if (length(sig_ages) > 0) {
@@ -137,9 +138,8 @@ for (age in age_ranges) {
   markers_asd <- gene_peak_list[[age]]
   if (!is.null(markers_asd)) {
     vals <- markers_asd$p_val_adj
-    vals[vals == 0] <- 1e-300  # prevent -Inf
-    logp_matrix[rownames(markers_asd), age] <- ifelse(markers_asd$is_specific == 1,
-                                                      -log10(vals), 0)
+    vals[vals == 0] <- 1e-300  # avoid -Inf
+    logp_matrix[rownames(markers_asd), age] <- -log10(vals)
   }
 }
 
@@ -159,21 +159,27 @@ age_order <- c(
 age_order <- intersect(age_order, colnames(logp_matrix))  # keep only ages in your dataset
 logp_matrix <- logp_matrix[, age_order, drop = FALSE]
 
-cap_val <- quantile(logp_matrix[logp_matrix > 0], 0.99, na.rm = TRUE) # cap values to prevent inf
-logp_matrix[logp_matrix > cap_val] <- cap_val
+specific_genes <- rownames(logp_matrix)[rowSums(logp_matrix > 0) > 0]
+logp_matrix_specific <- logp_matrix[specific_genes, , drop = FALSE]
+
+
+cap_val <- quantile(logp_matrix_specific[logp_matrix_specific > 0], 0.99, na.rm = TRUE) # cap values to prevent inf
+logp_matrix_specific[logp_matrix_specific > cap_val] <- cap_val
 
 # color scale
 grey_threshold <- -log10(0.05)
-col_fun <- colorRamp2(c(0, grey_threshold, cap_val / 2, cap_val),
-                      colors = c("grey80", "cadetblue1", "mediumpurple3", "plum4"))
+col_fun <- colorRamp2(
+  c(0, grey_threshold, cap_val / 3, 2*cap_val/3, cap_val),
+  colors = c("grey80", "lemonchiffon", "gold1", "darkseagreen2", "forestgreen")
+)
 
-pdf_width <- max(8, ncol(logp_matrix) * 1.2)
-pdf_height <- max(8, nrow(logp_matrix) / 10)
+pdf_width <- max(8, ncol(logp_matrix_specific) * 1.2)
+pdf_height <- max(8, nrow(logp_matrix_specific) / 10)
 pdf(file.path(output_dir, "ASD_gene_age_specificity_heatmap.pdf"),
     width = pdf_width, height = pdf_height)
 
 # heatmap
-Heatmap(logp_matrix,
+Heatmap(logp_matrix_specific,
         name = "-log10(adj p)",
         col = col_fun,
         cluster_rows = TRUE,
